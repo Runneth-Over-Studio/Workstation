@@ -1,4 +1,8 @@
 # Workstation
+![Linux Mint](https://img.shields.io/badge/Linux%20Mint-21%2B-success?logo=linuxmint&logoColor=white)
+![Shell Script](https://img.shields.io/badge/Bash-Automation-blue?logo=gnubash)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 Runneth Over Studio's default Linux Mint workstation configurations.
 
 ## Post-Install Script
