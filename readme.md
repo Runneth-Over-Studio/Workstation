@@ -25,8 +25,18 @@ You can run the setup script directly from this repository without cloning it lo
 bash <(curl -fsSL https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/main/scripts/mint-workstation-setup.sh)
 ```
 
-> 💡 This uses `curl` to fetch the script from GitHub and pipes it directly into `bash`.
+> 💡 This command fetches the script directly from GitHub and executes it via `bash`.
 > You’ll be prompted for sudo when needed.
+
+## Running After Cloning
+If you prefer to clone the repository first:
+
+```bash
+git clone https://github.com/Runneth-Over-Studio/Workstation.git
+cd Workstation/scripts
+chmod +x mint-workstation-setup.sh
+./mint-workstation-setup.sh --gpu=auto
+```
 
 ## Optional Flags
 | Flag            | Description                                                            | Example                                     |
