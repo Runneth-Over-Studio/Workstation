@@ -50,6 +50,7 @@ chmod +x mint-workstation-setup.sh
 | `--gpu=nvidia`  | Installs proprietary NVIDIA drivers using `ubuntu-drivers autoinstall` | `./mint-workstation-setup.sh --gpu=nvidia`  |
 | `--gpu=amd`     | Installs Mesa Vulkan drivers (AMD open-source stack)                   | `./mint-workstation-setup.sh --gpu=amd`     |
 | `--gpu=intel`   | Installs Mesa Vulkan drivers (Intel open-source stack)                 | `./mint-workstation-setup.sh --gpu=intel`   |
+| `--gpu=none`    | Skips GPU driver installation entirely                                 | `./mint-workstation-setup.sh --gpu=none`    |
 | `--help`        | Displays all available options                                         | `./mint-workstation-setup.sh --help`        |
 
 ## Verification

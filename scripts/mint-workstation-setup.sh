@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
+# Log everything to a file as well as stdout/stderr
+exec > >(tee -a "$HOME/mint-workstation-setup.log") 2>&1
 set -euo pipefail
+trap 'echo -e "\n[ERR ] Failed at line $LINENO: $BASH_COMMAND" >&2' ERR
+export DEBIAN_FRONTEND=noninteractive
 
 # =============================================================================
 #    Linux Mint Workstation Setup
 #
-#  - Args: --skip-vulkan | --gpu=auto|nvidia|amd|intel | --help
+#  - Args: --skip-vulkan | --gpu=auto|nvidia|amd|intel|none | --help
 #
 #  1) System Updates
 #  2) GPU Driver Helper (auto/NVIDIA/AMD/Intel)
@@ -41,7 +45,7 @@ require_sudo() {
 
 usage() {
   cat <<EOF
-Usage: $0 [--skip-vulkan] [--gpu=auto|nvidia|amd|intel] [--help]
+Usage: $0 [--skip-vulkan] [--gpu=auto|nvidia|amd|intel|none] [--help]
 
 Options:
   --skip-vulkan           Skip installing Vulkan development packages
@@ -50,6 +54,7 @@ Options:
                             nvidia proprietary via ubuntu-drivers
                             amd    Mesa Vulkan stack
                             intel  Mesa Vulkan stack
+                            none   do nothing
   --help                  Show this help
 EOF
 }
@@ -74,7 +79,7 @@ system_update() {
   require_sudo
   log "Updating APT index and upgrading the system..."
   sudo apt-get update -y
-  sudo apt-get dist-upgrade -y
+  sudo apt-get -o Dpkg::Options::="--force-confnew" dist-upgrade -y
   sudo apt-get autoremove -y
 
   log "Installing common prerequisites..."
@@ -86,10 +91,16 @@ system_update() {
 #      - auto: detect vendor; NVIDIA => proprietary driver, AMD/Intel => Mesa
 #      - nvidia: force ubuntu-drivers autoinstall
 #      - amd/intel: ensure Mesa Vulkan stack
+#      - none: do nothing
 # =============================================================================
 install_gpu_drivers() {
   require_sudo
   local mode="$GPU_MODE"
+
+  if [[ "$mode" == "none" ]]; then
+    log "GPU driver helper skipped (--gpu=none)."
+    return 0
+  fi
 
   # Auto-detect if requested
   if [[ "$mode" == "auto" ]]; then
@@ -97,7 +108,7 @@ install_gpu_drivers() {
     pci="$(LC_ALL=C lspci -nnk | grep -iE 'VGA|3D|Display' || true)"
     if echo "$pci" | grep -qi nvidia; then
       mode="nvidia"
-    elif echo "$pci" | grep -qi amd\|ati; then
+    elseif echo "$pci" | grep -qi amd\|ati; then
       mode="amd"
     elif echo "$pci" | grep -qi intel; then
       mode="intel"
@@ -112,9 +123,10 @@ install_gpu_drivers() {
     nvidia)
       log "Installing NVIDIA proprietary driver via ubuntu-drivers..."
       sudo apt-get install -y ubuntu-drivers-common
-      # This picks the recommended nvidia-driver-XXX for your card
       sudo ubuntu-drivers autoinstall || warn "ubuntu-drivers autoinstall did not complete successfully."
       log "NVIDIA driver install attempted. A reboot is usually required."
+      # drop a hint file the user can check later
+      touch "$HOME/.reboot-recommended-nvidia" || true
       ;;
 
     amd|intel)
@@ -198,6 +210,9 @@ libreoffice_flatpak() {
   if ! flatpak remote-list | grep -qi flathub; then
     sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
   fi
+  if ! command -v flatpak >/dev/null 2>&1; then
+    warn "Flatpak installed; if 'flatpak' command is not found, open a new shell or re-login."
+  fi
 
   log "Installing LibreOffice from Flathub..."
   sudo flatpak install -y flathub org.libreoffice.LibreOffice
@@ -242,6 +257,10 @@ install_bitwarden() {
 
 install_joplin() {
   log "Installing Joplin via official install/update script (no Flatpak)..."
+  require_sudo
+  # Prevent AppImage launch issues on some bases
+  sudo apt-get install -y libfuse2 || true
+
   JOPLIN_SCRIPT=$(mktemp)
   curl -fsSL "https://raw.githubusercontent.com/laurent22/joplin/dev/Joplin_install_and_update.sh" -o "$JOPLIN_SCRIPT"
   chmod +x "$JOPLIN_SCRIPT"
@@ -266,6 +285,10 @@ install_vscode_extensions() {
   if ! exists code; then
     warn "VS Code not detected; skipping extension installs."; return 0
   fi
+
+  # Headless warm-up (non-fatal) to ensure 'code' CLI is ready
+  timeout 10s code --version >/dev/null 2>&1 || true
+
   code --install-extension ms-dotnettools.vscode-dotnet-runtime   || true
   code --install-extension ms-dotnettools.csharp                  || true
   code --install-extension ms-dotnettools.csdevkit                || true
@@ -414,5 +437,8 @@ main() {
   rice_section
 
   log "✅ Setup complete!"
+  if [[ -f "$HOME/.reboot-recommended-nvidia" ]]; then
+    warn "NVIDIA drivers were installed; a reboot is recommended."
+  fi
 }
 main "$@"
