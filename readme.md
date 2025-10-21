@@ -1,8 +1,6 @@
 # Workstation
 Runneth Over Studio's default Linux Mint workstation configurations.
 
-You can safely re-run the script at any time. Installed packages and Flatpaks are skipped automatically, and your existing VS Code settings are merged non-destructively with backups created in ~/.config/Code/User/.
-
 ## Post-Install Script
 Performs system updates, applies various themes & aesthetics, and installs & configures the following:
 
@@ -17,6 +15,8 @@ Performs system updates, applies various themes & aesthetics, and installs & con
 - **Inkscape** - Vector Graphics
 - **Krita** - Raster Art
 - **Flameshot** - Screenshot Utility
+
+You can safely re-run the script at any time. Installed packages and Flatpaks are skipped automatically, and your existing VS Code settings are merged non-destructively with backups created in ~/.config/Code/User/.
 
 ## Running Directly from GitHub
 You can run the setup script directly from this repository without cloning it locally.
