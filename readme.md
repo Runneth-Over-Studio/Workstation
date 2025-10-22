@@ -18,6 +18,7 @@ Performs system updates, applies various themes & aesthetics, and installs & con
 - **VS Code** - Code Editor
 - **LibreOffice** (Flatpak)
 - **Joplin** - Note-Taking
+- **BleachBit** - System Cleaner
 - **Bitwarden** - Password Vault
 - **Blender** - 3D Modeling & Rendering
 - **FreeCAD** - Parametric CAD
