@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="content\logo.png" width="175" alt="Workstation Logo">
+</p>
+
 # Workstation
 ![Linux Mint](https://img.shields.io/badge/Linux%20Mint-21%2B-success?logo=linuxmint&logoColor=white)
 ![Shell Script](https://img.shields.io/badge/Bash-Automation-blue?logo=gnubash)
