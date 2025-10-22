@@ -23,6 +23,8 @@ export DEBIAN_FRONTEND=noninteractive
 #     • FreeCAD - Parametric CAD
 #     • Inkscape - Vector Graphics
 #     • Krita - Raster Art
+#     • Kdenlive - Video Editing
+#     • OBS - Screen Recording
 #     • Flameshot - Screenshot Utility
 #  6) VS Code Extensions
 #  7) VS Code Settings
