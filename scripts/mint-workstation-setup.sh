@@ -18,6 +18,7 @@ export DEBIAN_FRONTEND=noninteractive
 #     • git - Version Control
 #     • VS Code - Code Editor
 #     • Joplin - Note-Taking
+#     • BleachBit - System Cleaner
 #     • Bitwarden - Password Vault
 #     • Blender - 3D Modeling & Rendering
 #     • FreeCAD - Parametric CAD
@@ -236,6 +237,7 @@ install_apps() {
   install_vscode
   install_bitwarden
   install_joplin
+  install_bleachbit
   install_creative_tools_flatpaks
 }
 
@@ -304,6 +306,13 @@ install_joplin() {
   chmod +x "$JOPLIN_SCRIPT"
   bash "$JOPLIN_SCRIPT"
   rm -f "$JOPLIN_SCRIPT"
+}
+
+install_bleachbit() {
+  log "Installing BleachBit..."
+  require_sudo
+  
+  sudo apt-get install -y bleachbit
 }
 
 install_creative_tools_flatpaks() {
@@ -432,6 +441,7 @@ JSON
 configure_apps() {
   configure_libreoffice
   configure_firefox
+  configure_bleachbit
 }
 
 configure_libreoffice() {
@@ -502,16 +512,99 @@ configure_firefox() {
   log "Firefox prefs applied at: $USERJS"
 }
 
+configure_bleachbit() {
+  log "Configuring BleachBit with safe, conservative defaults (user-level)..."
+
+  local CFG_DIR="$HOME/.config/bleachbit"
+  local CFG_FILE="$CFG_DIR/bleachbit.ini"
+  local TS; TS="$(date +%Y%m%d-%H%M%S)"
+
+  mkdir -p "$CFG_DIR"
+
+  # Backup an existing config if present
+  if [[ -f "$CFG_FILE" ]]; then
+    cp "$CFG_FILE" "$CFG_FILE.bak.$TS"
+  fi
+
+  # Minimal safe preset:
+  # - Only remove generic caches/temp and thumbnails
+  # - Leave browsers and package caches untouched
+  cat > "$CFG_FILE" <<'INI'
+[bleachbit]
+# Do not overwrite; just provide sane safe defaults.
+# You can edit these later via the GUI (Preferences).
+
+# General behavior
+shred = False
+confirm = True
+delete_confirmation = True
+
+# Keep only English interface (optional; comment out to keep all)
+# preserve_languages = en
+
+# Cleaners: section names map to modules; keys map to specific items.
+# We keep this conservative.
+[system]
+cache = True
+temporary_files = True
+# recent_documents = False         ; Uncomment to also clear recent docs
+trash = True
+
+[thumbnails]
+cache = True
+
+# Browsers left untouched by default:
+# [firefox]
+# cache = True
+# crash_reports = True
+# (intentionally disabled here)
+
+# Package managers intentionally left untouched:
+# [apt]
+# autoclean = False
+# clean = False
+INI
+
+  log "BleachBit defaults written to $CFG_FILE (backup kept if one existed)."
+}
+
 # =============================================================================
 #  9) "RICE" – THEMES & AESTHETICS
 # =============================================================================
 cook_rice() {
+  set_mint_theme
   set_icon_theme
   set_fonts
+  tweak_time_and_date_prefs
   tweak_screensaver_prefs
+  tweak_file_management_prefs
+  tweak_behavior_prefs
   install_neofetch
-  install_gnome_gtile
+  install_cinnamon_gtile
   install_cinnamon_transparent_panels
+}
+
+set_mint_theme() {
+  # gsettings is available in Cinnamon (and also used for Mint theming)
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; skipping Mint theme configuration."
+    return 0
+  fi
+
+  log "Applying Linux Mint theme..."
+
+  # Apply core theme components
+  gsettings set org.cinnamon.theme name 'Mint-Y-Dark' 2>/dev/null || true
+  gsettings set org.cinnamon.desktop.interface gtk-theme 'Mint-Y-Dark' 2>/dev/null || true
+  gsettings set org.cinnamon.desktop.wm.preferences theme 'Mint-Y-Dark' 2>/dev/null || true
+  gsettings set org.cinnamon.desktop.interface cursor-theme 'DMZ-White' 2>/dev/null || true
+
+  # Optional: Adjust accent color to Mint-Y
+  if gsettings writable org.cinnamon.desktop.interface accent-color &>/dev/null; then
+    gsettings set org.cinnamon.desktop.interface accent-color 'mint-y' 2>/dev/null || true
+  fi
+
+  log "Linux Mint theme applied (Mint-Y Dark)."
 }
 
 set_icon_theme() {
@@ -531,6 +624,34 @@ set_fonts() {
   require_sudo
   
   sudo apt-get install -y fonts-firacode fonts-jetbrains-mono
+}
+
+tweak_time_and_date_prefs() {
+  log "Tweaking time and date preferences (12-hour clock, Sunday start)..."
+
+  # Disable 24-hour clock
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
+    gsettings set org.cinnamon.desktop.interface clock-use-24h false 2>/dev/null || \
+      warn "Could not set clock to 12-hour format."
+  elif gsettings list-schemas | grep -qx 'org.gnome.desktop.interface'; then
+    gsettings set org.gnome.desktop.interface clock-use-24h false 2>/dev/null || \
+      warn "Could not set clock to 12-hour format."
+  else
+    warn "No compatible schema for clock-use-24h found."
+  fi
+
+  # Set first day of week to Sunday
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.calendar'; then
+    gsettings set org.cinnamon.desktop.calendar first-day-of-week 'sunday' 2>/dev/null || \
+      warn "Could not set first day of week to Sunday (Cinnamon schema)."
+  elif gsettings list-schemas | grep -qx 'org.gnome.desktop.calendar'; then
+    gsettings set org.gnome.desktop.calendar first-day-of-week 'sunday' 2>/dev/null || \
+      warn "Could not set first day of week to Sunday (GNOME schema)."
+  else
+    warn "No compatible schema for first-day-of-week found."
+  fi
+
+  log "Time and date preferences updated."
 }
 
 tweak_screensaver_prefs() {
@@ -600,6 +721,176 @@ tweak_screensaver_prefs() {
   fi
 }
 
+tweak_file_management_prefs() {
+  log "Tweaking Nemo file management preferences (view, behavior, toolbar)..."
+
+  # 1) Default view → List View
+  if gsettings list-schemas | grep -qx 'org.nemo.preferences'; then
+    gsettings set org.nemo.preferences default-folder-viewer 'list-view' 2>/dev/null || \
+      warn "Could not set Nemo default view to list-view."
+  else
+    warn "Schema org.nemo.preferences not found (is Nemo installed/running?)."
+    return 0
+  fi
+
+  # 2) Executable text files → View when opened
+  #    org.nemo.preferences executable-text-activation: 'display'|'launch'|'ask'
+  if gsettings list-keys org.nemo.preferences | grep -qx 'executable-text-activation'; then
+    gsettings set org.nemo.preferences executable-text-activation 'display' 2>/dev/null || \
+      warn "Could not set executable-text-activation to 'display'."
+  else
+    warn "Key executable-text-activation not available on this Nemo version."
+  fi
+
+  # 3) Click twice to rename (best-effort across Nemo versions)
+  #    Try a few likely keys; set the first one that exists to true.
+  local rename_keys=(
+    "click-to-rename"
+    "rename-on-click"
+    "rename-by-clicking"
+    "click-double-rename"
+  )
+  local set_rename=false
+  for rk in "${rename_keys[@]}"; do
+    if gsettings list-keys org.nemo.preferences | grep -qx "$rk"; then
+      if gsettings set org.nemo.preferences "$rk" true 2>/dev/null; then
+        log "Enabled 'click twice to rename' via org.nemo.preferences::$rk"
+        set_rename=true
+        break
+      fi
+    fi
+  done
+  [[ "$set_rename" == false ]] && warn "Rename-on-click key not found on this Nemo version (skipped)."
+
+  # 4) Toolbar → ensure Refresh button present (best-effort)
+  #    Some Nemo versions expose a list for toolbar items.
+  #    We look for common candidates and add 'reload' if missing.
+  local toolbar_keys=(
+    "toolbar-items"
+    "toolbar-buttons"
+    "toolbar-layout"
+  )
+  local added_reload=false
+  for tk in "${toolbar_keys[@]}"; do
+    if gsettings list-keys org.nemo.preferences | grep -qx "$tk"; then
+      # Read existing list (might be @as [], or a list like ['new-folder','reload',...])
+      local cur
+      cur="$(gsettings get org.nemo.preferences "$tk" 2>/dev/null || true)"
+      # Normalize empty -> []
+      [[ -z "$cur" ]] && cur="[]"
+      # If already contains 'reload', skip
+      if printf "%s" "$cur" | grep -q "'reload'"; then
+        log "Toolbar already contains 'reload' (via $tk)."
+        added_reload=true
+        break
+      fi
+      # Append 'reload' safely using python to handle GVariant array syntax
+      local newval
+      newval="$(python3 - <<PY
+import ast, sys
+s=${cur!r}
+try:
+    # Accept either @as [] or normal list syntax from gsettings
+    if s.startswith('@as'):
+        # strip @as
+        s=s.split(' ',1)[1]
+    arr=ast.literal_eval(s)
+except Exception:
+    arr=[]
+if 'reload' not in arr:
+    arr.append('reload')
+print(str(arr).replace('"', "'"))
+PY
+)"
+      if [[ -n "$newval" ]]; then
+        gsettings set org.nemo.preferences "$tk" "$newval" 2>/dev/null && {
+          log "Added 'reload' to toolbar via org.nemo.preferences::$tk"
+          added_reload=true
+          break
+        }
+      fi
+    fi
+  done
+  [[ "$added_reload" == false ]] && warn "Could not locate a toolbar items key to add 'reload' (skipped)."
+
+  # 5) Soft-reload Nemo so changes apply (no logout)
+  #    - Quit all Nemo instances; the desktop instance respawns automatically on Cinnamon.
+  if command -v nemo >/dev/null 2>&1; then
+    nemo -q 2>/dev/null || pkill -HUP -f 'nemo' 2>/dev/null || true
+  fi
+}
+
+tweak_behavior_prefs() {
+  log "Tweaking behavior prefs (center new windows; open menu on hover)..."
+
+  # ----- Center newly opened windows -----
+  # Cinnamon's window manager is 'muffin' (GNOME mutter fork).
+  # Prefer explicit placement mode if available; also try boolean fallback.
+  local centered=false
+
+  if gsettings list-schemas | grep -qx 'org.cinnamon.muffin'; then
+    # Try placement-mode -> 'center'
+    if gsettings list-keys org.cinnamon.muffin | grep -qx 'placement-mode'; then
+      if gsettings set org.cinnamon.muffin placement-mode 'center' 2>/dev/null; then
+        log " • Window placement → center (org.cinnamon.muffin::placement-mode)"
+        centered=true
+      fi
+    fi
+    # Fallback: center-new-windows (bool), if exposed on this build
+    if [[ "$centered" == false ]] && gsettings list-keys org.cinnamon.muffin | grep -qx 'center-new-windows'; then
+      if gsettings set org.cinnamon.muffin center-new-windows true 2>/dev/null; then
+        log " • Window placement → center (org.cinnamon.muffin::center-new-windows)"
+        centered=true
+      fi
+    fi
+  fi
+
+  # GNOME fallback (rare on Mint Cinnamon, but harmless if schema exists)
+  if [[ "$centered" == false ]] && gsettings list-schemas | grep -qx 'org.gnome.mutter'; then
+    if gsettings list-keys org.gnome.mutter | grep -qx 'center-new-windows'; then
+      gsettings set org.gnome.mutter center-new-windows true 2>/dev/null && \
+        log " • Window placement → center (org.gnome.mutter::center-new-windows)"
+      centered=true
+    fi
+  fi
+
+  [[ "$centered" == false ]] && warn " • Could not find a window-centering key on this system (skipped)."
+
+  # ----- Open the main menu on hover -----
+  # Cinnamon menu settings live under an applet schema; names vary by version/theme.
+  # We'll probe common schemas and keys and set the first match to true.
+  local -a menu_schemas=(
+    "org.cinnamon.applets.menu@cinnamon.org"
+    "org.cinnamon.applets.cinnamon-menu@cinnamon.org"
+    "org.cinnamon.applets.MintMenu@linuxmint.com"
+  )
+  local -a menu_keys=(
+    "activate-on-hover"
+    "open-on-hover"
+    "menu-open-hover"
+    "hover-to-open"
+  )
+
+  local hover_set=false
+  for sch in "${menu_schemas[@]}"; do
+    if gsettings list-schemas | grep -qx "$sch"; then
+      for key in "${menu_keys[@]}"; do
+        if gsettings list-keys "$sch" 2>/dev/null | grep -qx "$key"; then
+          if gsettings set "$sch" "$key" true 2>/dev/null; then
+            log " • Menu hover open → enabled ($sch::$key)"
+            hover_set=true
+            break 2
+          fi
+        fi
+      done
+    fi
+  done
+  [[ "$hover_set" == false ]] && warn " • Menu ‘open on hover’ key not found (skipped)."
+
+  # Soft reload Cinnamon so changes apply immediately
+  pkill -HUP -f "cinnamon$" 2>/dev/null || true
+}
+
 install_neofetch() {
   log "Installing Neofetch..."
   require_sudo
@@ -634,52 +925,58 @@ EOF
   done
 }
 
-install_gnome_gtile() {
-  # Only for GNOME sessions
-  if [[ "$XDG_CURRENT_DESKTOP" != *"GNOME"* ]]; then
-    warn "GNOME Shell not detected; skipping gTile installation."
+install_cinnamon_gtile() {
+  # Only for Cinnamon sessions
+  if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
+    warn "Cinnamon desktop not detected; skipping gTile (Cinnamon)."
     return 0
   fi
 
-  log "Installing gTile (GNOME extension)..."
-  require_sudo
+  log "Installing gTile (Cinnamon Spice)..."
   
-  sudo apt-get install -y gnome-shell-extensions gnome-shell-extension-manager curl
+  local TMPDIR UUID EXT_BASE TARGET
+  TMPDIR="$(mktemp -d)"
+  UUID="gTile@shuairan"
+  EXT_BASE="$HOME/.local/share/cinnamon/extensions"
+  TARGET="$EXT_BASE/$UUID"
 
-  if ! command -v gnome-extensions >/dev/null 2>&1; then
-    warn "gnome-extensions CLI not found — cannot enable gTile automatically."
-  fi
+  # We assume git is available from the App Installs step.
+  git clone --depth=1 https://github.com/shuairan/gTile "$TMPDIR/gTile" >/dev/null 2>&1 || {
+    warn "Git clone failed; aborting gTile (Cinnamon)."
+    rm -rf "$TMPDIR"
+    return 0
+  }
 
-  local UUID="gTile@vibou"
-  local EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$UUID"
+  mkdir -p "$EXT_BASE"
+  rm -rf "$TARGET"
+  cp -r "$TMPDIR/gTile" "$TARGET"
+  rm -rf "$TMPDIR"
+  log "gTile (Cinnamon) installed to $TARGET"
 
-  if [[ -d "$EXT_DIR" ]]; then
-    log "gTile already installed at $EXT_DIR"
-  else
-    log "Downloading and installing gTile..."
-    local VERSION_URL="https://extensions.gnome.org/extension-query/?search=gtile"
-    local DOWNLOAD_URL
-    # pick the last (latest) shell_version_map entry safely
-    DOWNLOAD_URL=$(curl -s "$VERSION_URL" \
-      | jq -r '.extensions[0].shell_version_map | .[length-1].download_url' 2>/dev/null || true)
-
-    if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
-      warn "Could not resolve gTile download URL; skipping installation."
+  # Enable the extension automatically
+  if command -v gsettings >/dev/null 2>&1; then
+    log "Enabling gTile (Cinnamon) extension..."
+    local CURRENT NEW
+    CURRENT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo "[]")"
+    NEW="$(python3 - <<PY
+import ast
+lst=[]
+try: lst=ast.literal_eval(${CURRENT!r})
+except: pass
+u="${UUID}"
+if u not in lst: lst.append(u)
+print(str(lst).replace('"', "'"))
+PY
+)"
+    gsettings set org.cinnamon enabled-extensions "$NEW" 2>/dev/null || {
+      warn "Failed to enable gTile (Cinnamon) via gsettings."
       return 0
-    fi
-
-    local TEMP_ZIP
-    TEMP_ZIP=$(mktemp --suffix=.zip)
-    curl -fsSL "https://extensions.gnome.org${DOWNLOAD_URL}" -o "$TEMP_ZIP"
-    mkdir -p "$EXT_DIR"
-    unzip -qo "$TEMP_ZIP" -d "$EXT_DIR"
-    rm -f "$TEMP_ZIP"
-    log "gTile installed to $EXT_DIR"
-  fi
-
-  if command -v gnome-extensions >/dev/null 2>&1; then
-    gnome-extensions enable "$UUID" || warn "Failed to enable gTile automatically."
-    log "gTile extension enabled."
+    }
+    log "gTile (Cinnamon) enabled."
+    # Soft-reload Cinnamon to apply changes
+    pkill -HUP -f "cinnamon$" 2>/dev/null || true
+  else
+    warn "gsettings not found; unable to auto-enable gTile (Cinnamon)."
   fi
 }
 
