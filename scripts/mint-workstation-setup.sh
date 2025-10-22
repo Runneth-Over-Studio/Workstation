@@ -15,6 +15,7 @@ export DEBIAN_FRONTEND=noninteractive
 #  3) SDKs (.NET/Vulkan)
 #  4) LibreOffice via Flatpak
 #  5) App Installs
+#     • git - Version Control
 #     • VS Code - Code Editor
 #     • Joplin - Note-Taking
 #     • Bitwarden - Password Vault
@@ -83,7 +84,9 @@ system_update() {
   sudo apt-get autoremove -y
 
   log "Installing common prerequisites..."
-  sudo apt-get install -y curl wget apt-transport-https ca-certificates gnupg lsb-release software-properties-common
+  sudo apt-get install -y \
+    curl wget apt-transport-https ca-certificates gnupg lsb-release \
+    software-properties-common python3-minimal jq unzip
 }
 
 # =============================================================================
@@ -108,7 +111,7 @@ install_gpu_drivers() {
     pci="$(LC_ALL=C lspci -nnk | grep -iE 'VGA|3D|Display' || true)"
     if echo "$pci" | grep -qi nvidia; then
       mode="nvidia"
-    elseif echo "$pci" | grep -qi amd\|ati; then
+    elif echo "$pci" | grep -qi amd\|ati; then
       mode="amd"
     elif echo "$pci" | grep -qi intel; then
       mode="intel"
@@ -144,6 +147,11 @@ install_gpu_drivers() {
   esac
 }
 
+create_source_dir() {
+  log "Ensuring ~/source directory exists..."
+  mkdir -p "$HOME/source"
+}
+
 # =============================================================================
 #  3) SDKs
 # =============================================================================
@@ -174,7 +182,6 @@ install_vulkan_sdk() {
   fi
 
   log "Installing Vulkan via distro packages (recommended, standard way)..."
-  sudo apt-get update -y
   sudo apt-get install -y \
     libvulkan1 vulkan-tools \
     libvulkan-dev vulkan-validationlayers \
@@ -221,6 +228,18 @@ libreoffice_flatpak() {
 # =============================================================================
 #  5) APP INSTALLS
 # =============================================================================
+install_git() {
+  require_sudo
+  log "Installing Git..."
+  sudo apt-get install -y git
+
+  if command -v git >/dev/null 2>&1; then
+    log "Git version: $(git --version)"
+  else
+    error "Git installation failed."
+  fi
+}
+
 install_vscode() {
   log "Installing VS Code via Microsoft APT repo (no Flatpak/Snap fallback)..."
   require_sudo
@@ -302,6 +321,15 @@ install_vscode_extensions() {
   code --install-extension PKief.material-icon-theme              || true
   code --install-extension KatsuteDev.background                  || true
   code --install-extension AvaloniaTeam.vscode-avalonia           || true
+
+  # Install Avalonia .NET project templates
+  if command -v dotnet >/dev/null 2>&1; then
+    log "Installing Avalonia .NET project templates..."
+    dotnet new install Avalonia.Templates || warn "Avalonia.Templates install failed."
+  else
+    warn ".NET SDK not found; skipping Avalonia.Templates install."
+  fi
+
   log "VS Code extension installation complete."
 }
 
@@ -394,10 +422,226 @@ rice_section() {
   require_sudo
   log "Installing Papirus icon theme and useful fonts..."
   sudo add-apt-repository -y ppa:papirus/papirus || true
-  sudo apt-get update -y
   sudo apt-get install -y papirus-icon-theme fonts-firacode fonts-jetbrains-mono
   if exists gsettings; then
     gsettings set org.cinnamon.desktop.interface icon-theme 'Papirus-Dark' || true
+  fi
+
+  tweak_screensaver_prefs
+  install_neofetch
+  install_gnome_gtile
+  install_cinnamon_transparent_panels
+}
+
+tweak_screensaver_prefs() {
+  log "Customizing lock screen: disabling media controls, album art, and floating overlay (where supported)..."
+
+  # Candidate schemas seen across Cinnamon/Mint versions
+  local schemas=(
+    "org.cinnamon.desktop.screensaver"
+    "org.cinnamon.screensaver"
+    "org.gnome.desktop.screensaver"
+  )
+
+  # Candidate key names for each preference (varies by version)
+  local media_keys=(
+    "show-media-controls" "media-controls" "allow-media-control"
+    "show-media-player" "show-media-player-controls"
+  )
+  local album_keys=(
+    "show-album-art" "album-art" "show-media-artwork" "show-albumart"
+  )
+  local floating_keys=(
+    "allow-floating" "allow-floating-window" "allow-floating-controls"
+    "allow-floating-ambient"
+  )
+
+  # Utility: does a schema exist?
+  schema_exists() { gsettings list-schemas | grep -qx "$1"; }
+
+  # Utility: does a key exist in schema?
+  key_exists() { gsettings list-keys "$1" 2>/dev/null | grep -qx "$2"; }
+
+  # Try to set the first matching key in any schema for a given list of keys
+  set_first_match_false() {
+    local -n _keys_ref=$1   # nameref to the key array
+    local label="$2"        # human-friendly label for logs
+    local set_ok=false
+
+    for sch in "${schemas[@]}"; do
+      schema_exists "$sch" || continue
+      for k in "${_keys_ref[@]}"; do
+        if key_exists "$sch" "$k"; then
+          if gsettings set "$sch" "$k" false 2>/dev/null; then
+            log " • $label → false  ($sch::$k)"
+            set_ok=true
+            break 2
+          fi
+        fi
+      done
+    done
+
+    if [[ "$set_ok" == false ]]; then
+      warn " • $label not found on this system (skipped)."
+    fi
+  }
+
+  # Apply toggles
+  set_first_match_false media_keys   "Show media player controls"
+  set_first_match_false album_keys   "Show album art"
+  set_first_match_false floating_keys "Allow floating overlay"
+
+  # Try to refresh the screensaver so changes apply
+  if command -v cinnamon-screensaver-command >/dev/null 2>&1; then
+    cinnamon-screensaver-command -r 2>/dev/null || true
+  else
+    # As a last resort, gently nudge the process (non-fatal)
+    pkill -HUP -f cinnamon-screensaver 2>/dev/null || true
+  fi
+}
+
+install_neofetch() {
+  require_sudo
+  log "Installing Neofetch..."
+  sudo apt-get install -y neofetch
+
+  log "Enabling Neofetch auto-launch for interactive shells..."
+  local MARKER="neofetch auto-launch (added by mint-workstation-setup)"
+  read -r -d '' NEOFETCH_SNIPPET <<'EOF'
+# >>> neofetch auto-launch (added by mint-workstation-setup) >>>
+if command -v neofetch >/dev/null 2>&1; then
+  case "$-" in
+    *i*) neofetch ;;
+  esac
+fi
+# <<< neofetch auto-launch <<<
+EOF
+
+  # Append once to ~/.bashrc and ~/.zshrc (create file if missing)
+  for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [[ -f "$RC" ]]; then
+      if ! grep -q "$MARKER" "$RC"; then
+        printf "\n%s\n" "$NEOFETCH_SNIPPET" >> "$RC"
+        log "Added Neofetch auto-launch to $(basename "$RC")"
+      else
+        log "Neofetch auto-launch already present in $(basename "$RC")"
+      fi
+    else
+      printf "%s\n" "$NEOFETCH_SNIPPET" > "$RC"
+      log "Created $(basename "$RC") with Neofetch auto-launch"
+    fi
+  done
+}
+
+install_gnome_gtile() {
+  log "Attempting to install GNOME extension: gTile..."
+
+  if [[ "$XDG_CURRENT_DESKTOP" != *"GNOME"* ]]; then
+    warn "GNOME Shell not detected; skipping gTile installation."
+    return 0
+  fi
+
+  require_sudo
+  sudo apt-get install -y gnome-shell-extensions gnome-shell-extension-manager curl
+
+  if ! command -v gnome-extensions >/dev/null 2>&1; then
+    warn "gnome-extensions CLI not found — cannot enable gTile automatically."
+  fi
+
+  local UUID="gTile@vibou"
+  local EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$UUID"
+
+  if [[ -d "$EXT_DIR" ]]; then
+    log "gTile already installed at $EXT_DIR"
+  else
+    log "Downloading and installing gTile..."
+    local VERSION_URL="https://extensions.gnome.org/extension-query/?search=gtile"
+    local DOWNLOAD_URL
+    # pick the last (latest) shell_version_map entry safely
+    DOWNLOAD_URL=$(curl -s "$VERSION_URL" \
+      | jq -r '.extensions[0].shell_version_map | .[length-1].download_url' 2>/dev/null || true)
+
+    if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
+      warn "Could not resolve gTile download URL; skipping installation."
+      return 0
+    fi
+
+    local TEMP_ZIP
+    TEMP_ZIP=$(mktemp --suffix=.zip)
+    curl -fsSL "https://extensions.gnome.org${DOWNLOAD_URL}" -o "$TEMP_ZIP"
+    mkdir -p "$EXT_DIR"
+    unzip -qo "$TEMP_ZIP" -d "$EXT_DIR"
+    rm -f "$TEMP_ZIP"
+    log "gTile installed to $EXT_DIR"
+  fi
+
+  if command -v gnome-extensions >/dev/null 2>&1; then
+    gnome-extensions enable "$UUID" || warn "Failed to enable gTile automatically."
+    log "gTile extension enabled."
+  fi
+}
+
+install_cinnamon_transparent_panels() {
+  # Only for Cinnamon sessions
+  if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
+    warn "Cinnamon desktop not detected; skipping Transparent Panels."
+    return 0
+  fi
+
+  log "Installing Transparent Panels (via upstream utils.sh)..."
+  local TMPDIR UUID
+  TMPDIR="$(mktemp -d)"
+  UUID="transparent-panels@germanfr.github.com"
+
+  git clone --depth=1 https://github.com/germanfr/cinnamon-transparent-panels.git \
+    "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1 || {
+      warn "Git clone failed; aborting Transparent Panels."
+      rm -rf "$TMPDIR"
+      return 0
+    }
+
+  # Run installer as current user
+  if ( cd "$TMPDIR/cinnamon-transparent-panels" && bash ./utils.sh install ); then
+    log "Transparent Panels installed to ~/.local/share/cinnamon/extensions/$UUID"
+  else
+    warn "Transparent Panels installer (utils.sh) failed."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  rm -rf "$TMPDIR"
+
+  # Enable the extension automatically
+  if command -v gsettings >/dev/null 2>&1; then
+    log "Enabling Transparent Panels extension..."
+
+    local CURRENT NEW
+    CURRENT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo "[]")"
+
+    # Use Python for safe list manipulation (avoids bash quoting issues)
+    NEW="$(python3 - <<PY
+import ast
+lst = []
+try:
+    lst = ast.literal_eval(${CURRENT!r})
+except Exception:
+    pass
+if "${UUID}" not in lst:
+    lst.append("${UUID}")
+print(str(lst).replace('"', "'"))
+PY
+)"
+    if [[ -n "$NEW" ]]; then
+      gsettings set org.cinnamon enabled-extensions "$NEW" 2>/dev/null || {
+        warn "Failed to enable Transparent Panels via gsettings."
+        return 0
+      }
+      log "Transparent Panels extension enabled successfully."
+      # Reload Cinnamon to apply changes immediately (safe, no logout required)
+      pkill -HUP -f "cinnamon$" 2>/dev/null || true
+    fi
+  else
+    warn "gsettings not found; unable to auto-enable Transparent Panels."
   fi
 }
 
@@ -410,6 +654,7 @@ main() {
 
   log "==== 2) GPU DRIVER HELPER (mode: $GPU_MODE) ===="
   install_gpu_drivers
+  create_source_dir
 
   log "==== 3) SDKs ===="
   install_dotnet_sdk
@@ -419,6 +664,7 @@ main() {
   libreoffice_flatpak
 
   log "==== 5) APP INSTALLS ===="
+  install_git
   install_vscode
   install_bitwarden
   install_joplin

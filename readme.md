@@ -11,6 +11,7 @@ Performs system updates, applies various themes & aesthetics, and installs & con
 - **.NET SDK**
 - **Vulkan SDK**
 - **LibreOffice** (Flatpak)
+- **git**
 - **VS Code** - Code Editor
 - **Joplin** - Note-Taking
 - **Bitwarden** - Password Vault
