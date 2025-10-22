@@ -14,15 +14,17 @@ Performs system updates, applies various themes & aesthetics, and installs & con
 
 - **.NET SDK**
 - **Vulkan SDK**
-- **LibreOffice** (Flatpak)
 - **git** - Version Control
 - **VS Code** - Code Editor
+- **LibreOffice** (Flatpak)
 - **Joplin** - Note-Taking
 - **Bitwarden** - Password Vault
 - **Blender** - 3D Modeling & Rendering
 - **FreeCAD** - Parametric CAD
 - **Inkscape** - Vector Graphics
 - **Krita** - Raster Art
+- **Kdenlive** - Video Editing
+- **OBS** - Screen Recording
 - **Flameshot** - Screenshot Utility
 
 You can safely re-run the script at any time. Installed packages and Flatpaks are skipped automatically, and your existing VS Code settings are merged non-destructively with backups created in ~/.config/Code/User/.
