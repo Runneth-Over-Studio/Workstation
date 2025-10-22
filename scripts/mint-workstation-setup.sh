@@ -79,8 +79,9 @@ done
 #  1) SYSTEM UPDATE
 # =============================================================================
 system_update() {
-  require_sudo
   log "Updating APT index and upgrading the system..."
+  require_sudo
+  
   sudo apt-get update -y
   sudo apt-get -o Dpkg::Options::="--force-confnew" dist-upgrade -y
   sudo apt-get autoremove -y
@@ -136,7 +137,6 @@ install_gpu_drivers() {
 
     amd|intel)
       log "Ensuring Mesa Vulkan stack (works for AMD & Intel)..."
-      sudo apt-get update -y
       sudo apt-get install -y mesa-vulkan-drivers || true
       # Helpful VA-API codec drivers (best-effort; may vary by base release)
       sudo apt-get install -y intel-media-va-driver-non-free || true
@@ -149,17 +149,18 @@ install_gpu_drivers() {
   esac
 }
 
-create_source_dir() {
-  log "Ensuring ~/source directory exists..."
-  mkdir -p "$HOME/source"
-}
-
 # =============================================================================
 #  3) SDKs
 # =============================================================================
+install_sdks() {
+  install_dotnet_sdk
+  install_vulkan_sdk
+}
+
 install_dotnet_sdk() {
+  log "Installing .NET SDK (current LTS) using dotnet-install.sh..."
   require_sudo
-  log "Installing the latest .NET SDK (current LTS) using dotnet-install.sh..."
+  
   DOTNET_INSTALL_SCRIPT=$(mktemp)
   curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$DOTNET_INSTALL_SCRIPT"
   chmod +x "$DOTNET_INSTALL_SCRIPT"
@@ -177,13 +178,14 @@ install_dotnet_sdk() {
 }
 
 install_vulkan_sdk() {
-  require_sudo
   if [[ "$SKIP_VULKAN" == true ]]; then
     log "Skipping Vulkan packages (--skip-vulkan)."
     return 0
   fi
 
-  log "Installing Vulkan via distro packages (recommended, standard way)..."
+  log "Installing Vulkan SDK (via distro packages)..."
+  require_sudo
+  
   sudo apt-get install -y \
     libvulkan1 vulkan-tools \
     libvulkan-dev vulkan-validationlayers \
@@ -209,12 +211,12 @@ install_vulkan_sdk() {
 #  4) LIBREOFFICE VIA FLATPAK
 # =============================================================================
 libreoffice_flatpak() {
+  log "Installing LibreOffice from Flathub (removing distro)..."
   require_sudo
-  log "Removing distro LibreOffice (APT) if present..."
+  
   sudo apt-get remove -y --purge libreoffice* libreoffice-core* || true
   sudo apt-get autoremove -y || true
 
-  log "Ensuring Flatpak + Flathub are available..."
   sudo apt-get install -y flatpak
   if ! flatpak remote-list | grep -qi flathub; then
     sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -223,16 +225,24 @@ libreoffice_flatpak() {
     warn "Flatpak installed; if 'flatpak' command is not found, open a new shell or re-login."
   fi
 
-  log "Installing LibreOffice from Flathub..."
   sudo flatpak install -y flathub org.libreoffice.LibreOffice
 }
 
 # =============================================================================
 #  5) APP INSTALLS
 # =============================================================================
+install_apps() {
+  install_git
+  install_vscode
+  install_bitwarden
+  install_joplin
+  install_creative_tools_flatpaks
+}
+
 install_git() {
-  require_sudo
   log "Installing Git..."
+  require_sudo
+  
   sudo apt-get install -y git
 
   if command -v git >/dev/null 2>&1; then
@@ -240,11 +250,15 @@ install_git() {
   else
     error "Git installation failed."
   fi
+
+  log "Ensuring ~/source directory exists..."
+  mkdir -p "$HOME/source"
 }
 
 install_vscode() {
-  log "Installing VS Code via Microsoft APT repo (no Flatpak/Snap fallback)..."
+  log "Installing VS Code (via Microsoft APT repo)..."
   require_sudo
+  
   if command -v flatpak >/dev/null 2>&1 && flatpak list --app | grep -qi 'com.visualstudio.code'; then
     sudo flatpak uninstall -y com.visualstudio.code || true
   fi
@@ -264,6 +278,8 @@ install_vscode() {
 
 install_bitwarden() {
   log "Installing Bitwarden (prefer .deb, fallback Flatpak if fetch fails)..."
+  require_sudo
+  
   if ! is_pkg_installed bitwarden; then
     TMP_DEB=$(mktemp --suffix=.deb)
     if curl -fsSL -o "$TMP_DEB" "https://vault.bitwarden.com/download/?app=desktop&platform=linux&variant=deb"; then
@@ -279,6 +295,7 @@ install_bitwarden() {
 install_joplin() {
   log "Installing Joplin via official install/update script (no Flatpak)..."
   require_sudo
+  
   # Prevent AppImage launch issues on some bases
   sudo apt-get install -y libfuse2 || true
 
@@ -291,6 +308,7 @@ install_joplin() {
 
 install_creative_tools_flatpaks() {
   log "Installing creative tools and utilities via Flatpak..."
+  
   sudo flatpak install -y flathub org.blender.Blender
   sudo flatpak install -y flathub org.freecadweb.FreeCAD || sudo flatpak install -y flathub org.freecad.FreeCAD
   sudo flatpak install -y flathub org.inkscape.Inkscape
@@ -304,10 +322,11 @@ install_creative_tools_flatpaks() {
 #  6) VS CODE EXTENSIONS
 # =============================================================================
 install_vscode_extensions() {
-  log "Installing VS Code extensions for .NET, web, and Avalonia development..."
   if ! exists code; then
     warn "VS Code not detected; skipping extension installs."; return 0
   fi
+
+  log "Installing VS Code extensions for .NET, web, and Avalonia development..."
 
   # Headless warm-up (non-fatal) to ensure 'code' CLI is ready
   timeout 10s code --version >/dev/null 2>&1 || true
@@ -343,7 +362,7 @@ install_vscode_extensions() {
 apply_vscode_settings() {
   log "Applying VS Code settings and keybindings..."
   require_sudo
-  sudo apt-get install -y jq
+
   USER_DIR="$HOME/.config/Code/User"
   mkdir -p "$USER_DIR"
 
@@ -411,7 +430,13 @@ JSON
 #  8) APP CONFIGURATIONS
 # =============================================================================
 configure_apps() {
-  log "Configuring LibreOffice (Tabbed UI helper script)..."
+  configure_libreoffice
+  configure_firefox
+}
+
+configure_libreoffice() {
+  log "Configuring LibreOffice..."
+  
   cat > "$HOME/.configure-libreoffice-ui.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "Open LibreOffice → View → User Interface → Tabbed to apply."
@@ -419,26 +444,97 @@ EOF
   chmod +x "$HOME/.configure-libreoffice-ui.sh"
 }
 
+configure_firefox() {
+  log "Configuring Firefox..."
+
+  local FF_DIR="$HOME/.mozilla/firefox"
+  local PROFILE=""
+  if [[ -d "$FF_DIR" ]]; then
+    PROFILE=$(find "$FF_DIR" -maxdepth 1 -type d -name "*.default*" | head -n 1 || true)
+  fi
+
+  if [[ -z "$PROFILE" || ! -d "$PROFILE" ]]; then
+    warn "No Firefox profile found yet. Skipping Firefox config (run Firefox once to create a profile)."
+    return 0
+  fi
+
+  local USERJS="$PROFILE/user.js"
+  local TS; TS="$(date +%Y%m%d-%H%M%S)"
+
+  # Prefs to enforce
+  local -a PREF_KEYS=(
+    'layers.acceleration.force-enabled'
+    'gfx.webrender.all'
+    'media.ffmpeg.vaapi.enabled'
+    'media.hardware-video-decoding.enabled'
+    'media.rdd-ffmpeg.enabled'
+    'gfx.x11-egl.force-enabled'
+    'widget.dmabuf.force-enabled'
+  )
+
+  # Backup existing user.js (if any)
+  if [[ -f "$USERJS" ]]; then
+    cp "$USERJS" "$USERJS.bak.$TS"
+  fi
+
+  # Start from existing (or empty), but strip previous copies of the keys we manage
+  local TMP="$USERJS.tmp.$TS"
+  [[ -f "$USERJS" ]] && cp "$USERJS" "$TMP" || : 
+
+  for k in "${PREF_KEYS[@]}"; do
+    # Remove any existing lines for this key
+    sed -i "\#^user_pref(\"$k\",#d" "$TMP" 2>/dev/null || true
+  done
+
+  # Append our managed block
+  {
+    echo '// ===== mint-workstation-setup: managed Firefox prefs ====='
+    echo 'user_pref("layers.acceleration.force-enabled", true);'
+    echo 'user_pref("gfx.webrender.all", true);'
+    echo 'user_pref("media.ffmpeg.vaapi.enabled", true);'
+    echo 'user_pref("media.hardware-video-decoding.enabled", true);'
+    echo 'user_pref("media.rdd-ffmpeg.enabled", true);'
+    echo 'user_pref("gfx.x11-egl.force-enabled", true);'
+    echo 'user_pref("widget.dmabuf.force-enabled", true);'
+  } >> "$TMP"
+
+  mv "$TMP" "$USERJS"
+  log "Firefox prefs applied at: $USERJS"
+}
+
 # =============================================================================
 #  9) "RICE" – THEMES & AESTHETICS
 # =============================================================================
-rice_section() {
-  require_sudo
-  log "Installing Papirus icon theme and useful fonts..."
-  sudo add-apt-repository -y ppa:papirus/papirus || true
-  sudo apt-get install -y papirus-icon-theme fonts-firacode fonts-jetbrains-mono
-  if exists gsettings; then
-    gsettings set org.cinnamon.desktop.interface icon-theme 'Papirus-Dark' || true
-  fi
-
+cook_rice() {
+  set_icon_theme
+  set_fonts
   tweak_screensaver_prefs
   install_neofetch
   install_gnome_gtile
   install_cinnamon_transparent_panels
 }
 
+set_icon_theme() {
+  log "Installing and applying Papirus icon theme..."
+  require_sudo
+  
+  sudo add-apt-repository -y ppa:papirus/papirus || true
+  sudo apt-get update -y
+  sudo apt-get install -y papirus-icon-theme
+  if exists gsettings; then
+    gsettings set org.cinnamon.desktop.interface icon-theme 'Papirus-Dark' || true
+  fi
+}
+
+set_fonts() {
+  log "Installing developer-friendly fonts (Fira Code, JetBrains Mono)..."
+  require_sudo
+  
+  sudo apt-get install -y fonts-firacode fonts-jetbrains-mono
+}
+
 tweak_screensaver_prefs() {
-  log "Customizing lock screen: disabling media controls, album art, and floating overlay (where supported)..."
+  log "Customizing lock screen..."
 
   # Candidate schemas seen across Cinnamon/Mint versions
   local schemas=(
@@ -505,8 +601,9 @@ tweak_screensaver_prefs() {
 }
 
 install_neofetch() {
-  require_sudo
   log "Installing Neofetch..."
+  require_sudo
+  
   sudo apt-get install -y neofetch
 
   log "Enabling Neofetch auto-launch for interactive shells..."
@@ -538,14 +635,15 @@ EOF
 }
 
 install_gnome_gtile() {
-  log "Attempting to install GNOME extension: gTile..."
-
+  # Only for GNOME sessions
   if [[ "$XDG_CURRENT_DESKTOP" != *"GNOME"* ]]; then
     warn "GNOME Shell not detected; skipping gTile installation."
     return 0
   fi
 
+  log "Installing gTile (GNOME extension)..."
   require_sudo
+  
   sudo apt-get install -y gnome-shell-extensions gnome-shell-extension-manager curl
 
   if ! command -v gnome-extensions >/dev/null 2>&1; then
@@ -658,21 +756,15 @@ main() {
 
   log "==== 2) GPU DRIVER HELPER (mode: $GPU_MODE) ===="
   install_gpu_drivers
-  create_source_dir
 
   log "==== 3) SDKs ===="
-  install_dotnet_sdk
-  install_vulkan_sdk
+  install_sdks
 
   log "==== 4) LIBREOFFICE VIA FLATPAK ===="
   libreoffice_flatpak
 
   log "==== 5) APP INSTALLS ===="
-  install_git
-  install_vscode
-  install_bitwarden
-  install_joplin
-  install_creative_tools_flatpaks
+  install_apps
 
   log "==== 6) VS CODE EXTENSIONS ===="
   install_vscode_extensions
@@ -684,7 +776,7 @@ main() {
   configure_apps
 
   log "==== 9) RICE (THEMES & AESTHETICS) ===="
-  rice_section
+  cook_rice
 
   log "✅ Setup complete!"
   if [[ -f "$HOME/.reboot-recommended-nvidia" ]]; then
