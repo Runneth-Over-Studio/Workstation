@@ -287,12 +287,14 @@ install_joplin() {
   rm -f "$JOPLIN_SCRIPT"
 }
 
-install_creative_and_utils_flatpaks() {
+install_creative_tools_flatpaks() {
   log "Installing creative tools and utilities via Flatpak..."
   sudo flatpak install -y flathub org.blender.Blender
   sudo flatpak install -y flathub org.freecadweb.FreeCAD || sudo flatpak install -y flathub org.freecad.FreeCAD
   sudo flatpak install -y flathub org.inkscape.Inkscape
   sudo flatpak install -y flathub org.kde.krita
+  sudo flatpak install -y flathub org.kde.kdenlive
+  sudo flatpak install -y flathub com.obsproject.Studio
   sudo flatpak install -y flathub org.flameshot.Flameshot
 }
 
@@ -668,7 +670,7 @@ main() {
   install_vscode
   install_bitwarden
   install_joplin
-  install_creative_and_utils_flatpaks
+  install_creative_tools_flatpaks
 
   log "==== 6) VS CODE EXTENSIONS ===="
   install_vscode_extensions
