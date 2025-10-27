@@ -34,7 +34,7 @@ You can safely re-run the script at any time. Installed packages and Flatpaks ar
 You can run the setup script directly from this repository without cloning it locally.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/main/scripts/mint-workstation-setup.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/refs/heads/main/scripts/mint-workstation-setup.sh)
 ```
 
 > 💡 This command fetches the script directly from GitHub and executes it via `bash`.
