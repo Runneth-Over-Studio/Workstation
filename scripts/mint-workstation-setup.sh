@@ -395,7 +395,7 @@ apply_vscode_settings() {
   USER_DIR="$HOME/.config/Code/User"
   mkdir -p "$USER_DIR"
 
-  read -r -d '' NEW_SETTINGS <<'JSON'
+  NEW_SETTINGS="$(cat <<'JSON'
 {
   "workbench.iconTheme": "material-icon-theme",
   "editor.tabSize": 2,
@@ -420,8 +420,8 @@ apply_vscode_settings() {
   "csharp.suppressDotnetInstallWarning": true
 }
 JSON
-
-  read -r -d '' NEW_KEYS <<'JSON'
+)"
+  NEW_KEYS="$(cat <<'JSON'
 [
   {
     "key": "ctrl+alt+o",
@@ -435,6 +435,7 @@ JSON
   }
 ]
 JSON
+)"
 
   SETTINGS="$USER_DIR/settings.json"
   KEYS="$USER_DIR/keybindings.json"
@@ -919,7 +920,7 @@ install_neofetch() {
 
   log "Enabling Neofetch auto-launch for interactive shells..."
   local MARKER="neofetch auto-launch (added by mint-workstation-setup)"
-  read -r -d '' NEOFETCH_SNIPPET <<'EOF'
+  NEOFETCH_SNIPPET="$(cat <<'EOF'
 # >>> neofetch auto-launch (added by mint-workstation-setup) >>>
 if command -v neofetch >/dev/null 2>&1; then
   case "$-" in
@@ -928,6 +929,7 @@ if command -v neofetch >/dev/null 2>&1; then
 fi
 # <<< neofetch auto-launch <<<
 EOF
+)"
 
   # Append once to ~/.bashrc and ~/.zshrc (create file if missing)
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
