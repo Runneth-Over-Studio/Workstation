@@ -980,13 +980,19 @@ install_cinnamon_gtile() {
     log "Enabling gTile (Cinnamon) extension..."
     local CURRENT NEW
     CURRENT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo "[]")"
-    NEW="$(python3 - <<PY
-import ast
-lst=[]
-try: lst=ast.literal_eval(${CURRENT!r})
-except: pass
-u="${UUID}"
-if u not in lst: lst.append(u)
+    NEW="$(python3 - "$CURRENT" "$UUID" <<'PY'
+import ast, sys
+cur = sys.argv[1]
+uuid = sys.argv[2]
+try:
+    # Handle GVariant like "@as []"
+    if cur.startswith('@as '):
+        cur = cur.split(' ', 1)[1]
+    lst = ast.literal_eval(cur)
+except Exception:
+    lst = []
+if uuid not in lst:
+    lst.append(uuid)
 print(str(lst).replace('"', "'"))
 PY
 )"
@@ -1040,15 +1046,18 @@ install_cinnamon_transparent_panels() {
     CURRENT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo "[]")"
 
     # Use Python for safe list manipulation (avoids bash quoting issues)
-    NEW="$(python3 - <<PY
-import ast
-lst = []
+    NEW="$(python3 - "$CURRENT" "$UUID" <<'PY'
+import ast, sys
+cur = sys.argv[1]
+uuid = sys.argv[2]
 try:
-    lst = ast.literal_eval(${CURRENT!r})
+    if cur.startswith('@as '):
+        cur = cur.split(' ', 1)[1]
+    lst = ast.literal_eval(cur)
 except Exception:
-    pass
-if "${UUID}" not in lst:
-    lst.append("${UUID}")
+    lst = []
+if uuid not in lst:
+    lst.append(uuid)
 print(str(lst).replace('"', "'"))
 PY
 )"
