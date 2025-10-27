@@ -84,6 +84,22 @@ Options:
 EOF
 }
 
+print_final_reboot_notice() {
+  # Always print a reboot recommendation; mark as required if the system flags it
+  local need_reboot="no"
+  if [[ -f /var/run/reboot-required ]]; then
+    need_reboot="yes"
+  fi
+  echo
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  if [[ "$need_reboot" == "yes" ]]; then
+    warn "A reboot is REQUIRED to finish applying updates and drivers."
+  else
+    log "A reboot is RECOMMENDED to ensure all changes are applied cleanly."
+  fi
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 # ----- arg parsing -----------------------------------------------------------
 SKIP_VULKAN=false
 GPU_MODE="auto"
@@ -112,6 +128,23 @@ system_update() {
   sudo apt-get install -y \
     curl wget apt-transport-https ca-certificates gnupg lsb-release \
     software-properties-common python3-minimal jq unzip
+}
+
+final_updates() {
+  log "==== FINALIZE: Refreshing all packages before completion ===="
+  require_sudo
+  # Make sure everything we installed is on the latest revs
+  sudo apt-get update -y
+  sudo apt-get -o Dpkg::Options::="--force-confnew" dist-upgrade -y
+  # Fix any partially configured packages (just in case)
+  sudo apt-get -f install -y || true
+  sudo apt-get autoremove -y
+
+  # Update Flatpak apps (LibreOffice, Blender, etc.)
+  if command -v flatpak >/dev/null 2>&1; then
+    log "Updating Flatpak apps…"
+    sudo flatpak update -y || true
+  fi
 }
 
 # =============================================================================
@@ -1106,9 +1139,8 @@ main() {
   log "==== 9) RICE (THEMES & AESTHETICS) ===="
   cook_rice
 
+  final_updates
   log "✅ Setup complete!"
-  if [[ -f "$HOME/.reboot-recommended-nvidia" ]]; then
-    warn "NVIDIA drivers were installed; a reboot is recommended."
-  fi
+  print_final_reboot_notice
 }
 main "$@"
