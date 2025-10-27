@@ -188,10 +188,10 @@ install_vulkan_sdk() {
   require_sudo
   
   sudo apt-get install -y \
-    libvulkan1 vulkan-tools \
-    libvulkan-dev vulkan-validationlayers \
-    glslang-tools spirv-tools shaderc \
-    mesa-vulkan-drivers
+  libvulkan1 vulkan-tools \
+  libvulkan-dev vulkan-validationlayers \
+  glslang-tools spirv-tools glslc libshaderc-dev \
+  mesa-vulkan-drivers
 
   # Optional X/Wayland dev headers, helpful for building sample apps with windows
   sudo apt-get install -y \
