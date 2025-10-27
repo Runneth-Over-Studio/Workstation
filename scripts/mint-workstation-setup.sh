@@ -1,8 +1,29 @@
 #!/usr/bin/env bash
 # Log everything to a file as well as stdout/stderr
 exec > >(tee -a "$HOME/mint-workstation-setup.log") 2>&1
+
+# Keep sudo alive during the whole run (only if not root)
+if [[ $EUID -ne 0 ]]; then
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "[ERR ] 'sudo' is required but not installed. Aborting." >&2
+    exit 1
+  fi
+  # Initial prompt (interactive); if this fails, abort early and clearly
+  if ! sudo -v; then
+    echo "[ERR ] Unable to obtain sudo privileges. Aborting." >&2
+    exit 1
+  fi
+  # Background refresh (non-interactive, no prompts)
+  ( while true; do sleep 60; sudo -n true || exit; done ) &
+  SUDO_KEEPALIVE_PID=$!
+  trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT
+fi
+
+# Enable strict error handling and useful debugging output
 set -euo pipefail
 trap 'echo -e "\n[ERR ] Failed at line $LINENO: $BASH_COMMAND" >&2' ERR
+
+# Ensures the script runs unattended by preventing interactive prompts during APT or DEB installs
 export DEBIAN_FRONTEND=noninteractive
 
 # =============================================================================
@@ -370,7 +391,6 @@ install_vscode_extensions() {
 # =============================================================================
 apply_vscode_settings() {
   log "Applying VS Code settings and keybindings..."
-  require_sudo
 
   USER_DIR="$HOME/.config/Code/User"
   mkdir -p "$USER_DIR"
