@@ -49,10 +49,8 @@ export DEBIAN_FRONTEND=noninteractive
 #     • Kdenlive - Video Editing
 #     • OBS - Screen Recording
 #     • Flameshot - Screenshot Utility
-#  6) VS Code Extensions
-#  7) VS Code Settings
-#  8) App Configurations
-#  9) "Rice" - Themes & Aesthetics
+#  6) App Configurations
+#  7) "Rice" - Themes & Aesthetics
 # =============================================================================
 
 # ----- helpers ---------------------------------------------------------------
@@ -411,120 +409,13 @@ install_brave_browser() {
 }
 
 # =============================================================================
-#  6) VS CODE EXTENSIONS
-# =============================================================================
-install_vscode_extensions() {
-  if ! exists code; then
-    warn "VS Code not detected; skipping extension installs."; return 0
-  fi
-
-  log "Installing VS Code extensions for .NET, web, and Avalonia development..."
-
-  # Headless warm-up (non-fatal) to ensure 'code' CLI is ready
-  timeout 10s code --version >/dev/null 2>&1 || true
-
-  code --install-extension ms-dotnettools.vscode-dotnet-runtime   || true
-  code --install-extension ms-dotnettools.csharp                  || true
-  code --install-extension ms-dotnettools.csdevkit                || true
-  code --install-extension JosKreativ.vscode-csharp-extensions    || true
-  code --install-extension JeremyCaron.csharp-organize-usings     || true
-  code --install-extension dbaeumer.vscode-eslint                 || true
-  code --install-extension ecmel.vscode-html-css                  || true
-  code --install-extension xabikos.JavaScriptSnippets             || true
-  code --install-extension formulahendry.auto-close-tag           || true
-  code --install-extension christian-kohler.path-intellisense     || true
-  code --install-extension PKief.material-icon-theme              || true
-  code --install-extension KatsuteDev.background                  || true
-  code --install-extension AvaloniaTeam.vscode-avalonia           || true
-
-  # Install Avalonia .NET project templates
-  if command -v dotnet >/dev/null 2>&1; then
-    log "Installing Avalonia .NET project templates..."
-    dotnet new install Avalonia.Templates || warn "Avalonia.Templates install failed."
-  else
-    warn ".NET SDK not found; skipping Avalonia.Templates install."
-  fi
-
-  log "VS Code extension installation complete."
-}
-
-# =============================================================================
-#  7) VS CODE SETTINGS
-# =============================================================================
-apply_vscode_settings() {
-  log "Applying VS Code settings and keybindings..."
-
-  USER_DIR="$HOME/.config/Code/User"
-  mkdir -p "$USER_DIR"
-
-  NEW_SETTINGS="$(cat <<'JSON'
-{
-  "workbench.iconTheme": "material-icon-theme",
-  "editor.tabSize": 2,
-  "editor.insertSpaces": true,
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "ms-dotnettools.csharp",
-  "editor.codeActionsOnSave": { "source.organizeImports": "explicit" },
-  "files.trimTrailingWhitespace": true,
-  "files.insertFinalNewline": true,
-  "editor.bracketPairColorization.enabled": true,
-  "editor.cursorBlinking": "expand",
-  "editor.fontSize": 16,
-  "explorer.confirmDelete": false,
-  "git.confirmSync": false,
-  "git.enableSmartCommit": true,
-  "csharpOrganizeUsings.sortOrder": "",
-  "csharpOrganizeUsings.splitGroups": false,
-  "dotnetAcquisitionExtension.existingDotnetPath": "/usr/share/dotnet/dotnet",
-  "dotnetAcquisitionExtension.enableTelemetry": false,
-  "eslint.validate": ["javascript","javascriptreact","typescript","typescriptreact"],
-  "csharp.semanticHighlighting.enabled": true,
-  "csharp.suppressDotnetInstallWarning": true
-}
-JSON
-)"
-  NEW_KEYS="$(cat <<'JSON'
-[
-  {
-    "key": "ctrl+alt+o",
-    "command": "csharp-organize-usings.organize",
-    "when": "editorTextFocus && editorLangId == csharp"
-  },
-  {
-    "key": "ctrl+shift+i",
-    "command": "editor.action.formatDocument",
-    "when": "editorHasDocumentFormattingProvider && editorTextFocus && !editorReadonly"
-  }
-]
-JSON
-)"
-
-  SETTINGS="$USER_DIR/settings.json"
-  KEYS="$USER_DIR/keybindings.json"
-  TS=$(date +%Y%m%d-%H%M%S)
-  [[ -f "$SETTINGS" ]] && cp "$SETTINGS" "$SETTINGS.bak.$TS"
-  [[ -f "$KEYS" ]] && cp "$KEYS" "$KEYS.bak.$TS"
-
-  if [[ -f "$SETTINGS" ]]; then
-    jq -s '.[0] * .[1]' "$SETTINGS" <(printf "%s" "$NEW_SETTINGS") > "$SETTINGS.merged.$TS" && mv "$SETTINGS.merged.$TS" "$SETTINGS"
-  else
-    printf "%s" "$NEW_SETTINGS" > "$SETTINGS"
-  fi
-
-  if [[ -f "$KEYS" ]]; then
-    jq -s '[.[0][], .[1][]] | unique_by(.key + ":" + .command)' "$KEYS" <(printf "%s" "$NEW_KEYS") > "$KEYS.merged.$TS" && mv "$KEYS.merged.$TS" "$KEYS"
-  else
-    printf "%s" "$NEW_KEYS" > "$KEYS"
-  fi
-}
-
-# =============================================================================
-#  8) APP CONFIGURATIONS
+#  6) APP CONFIGURATIONS
 # =============================================================================
 configure_apps() {
   configure_libreoffice
   configure_bleachbit
   configure_browsers
+  configure_vscode
 }
 
 configure_libreoffice() {
@@ -763,8 +654,115 @@ PY
   gsettings set org.cinnamon favorite-apps "$NEW" 2>/dev/null || true
 }
 
+configure_vscode {
+  install_vscode_extensions
+  apply_vscode_settings
+}
+
+install_vscode_extensions() {
+  if ! exists code; then
+    warn "VS Code not detected; skipping extension installs."; return 0
+  fi
+
+  log "Installing VS Code extensions for .NET, web, and Avalonia development..."
+
+  # Headless warm-up (non-fatal) to ensure 'code' CLI is ready
+  timeout 10s code --version >/dev/null 2>&1 || true
+
+  code --install-extension ms-dotnettools.vscode-dotnet-runtime   || true
+  code --install-extension ms-dotnettools.csharp                  || true
+  code --install-extension ms-dotnettools.csdevkit                || true
+  code --install-extension JosKreativ.vscode-csharp-extensions    || true
+  code --install-extension JeremyCaron.csharp-organize-usings     || true
+  code --install-extension dbaeumer.vscode-eslint                 || true
+  code --install-extension ecmel.vscode-html-css                  || true
+  code --install-extension xabikos.JavaScriptSnippets             || true
+  code --install-extension formulahendry.auto-close-tag           || true
+  code --install-extension christian-kohler.path-intellisense     || true
+  code --install-extension PKief.material-icon-theme              || true
+  code --install-extension KatsuteDev.background                  || true
+  code --install-extension AvaloniaTeam.vscode-avalonia           || true
+
+  # Install Avalonia .NET project templates
+  if command -v dotnet >/dev/null 2>&1; then
+    log "Installing Avalonia .NET project templates..."
+    dotnet new install Avalonia.Templates || warn "Avalonia.Templates install failed."
+  else
+    warn ".NET SDK not found; skipping Avalonia.Templates install."
+  fi
+
+  log "VS Code extension installation complete."
+}
+
+apply_vscode_settings() {
+  log "Applying VS Code settings and keybindings..."
+
+  USER_DIR="$HOME/.config/Code/User"
+  mkdir -p "$USER_DIR"
+
+  NEW_SETTINGS="$(cat <<'JSON'
+{
+  "workbench.iconTheme": "material-icon-theme",
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "ms-dotnettools.csharp",
+  "editor.codeActionsOnSave": { "source.organizeImports": "explicit" },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "editor.bracketPairColorization.enabled": true,
+  "editor.cursorBlinking": "expand",
+  "editor.fontSize": 16,
+  "explorer.confirmDelete": false,
+  "git.confirmSync": false,
+  "git.enableSmartCommit": true,
+  "csharpOrganizeUsings.sortOrder": "",
+  "csharpOrganizeUsings.splitGroups": false,
+  "dotnetAcquisitionExtension.existingDotnetPath": "/usr/share/dotnet/dotnet",
+  "dotnetAcquisitionExtension.enableTelemetry": false,
+  "eslint.validate": ["javascript","javascriptreact","typescript","typescriptreact"],
+  "csharp.semanticHighlighting.enabled": true,
+  "csharp.suppressDotnetInstallWarning": true
+}
+JSON
+)"
+  NEW_KEYS="$(cat <<'JSON'
+[
+  {
+    "key": "ctrl+alt+o",
+    "command": "csharp-organize-usings.organize",
+    "when": "editorTextFocus && editorLangId == csharp"
+  },
+  {
+    "key": "ctrl+shift+i",
+    "command": "editor.action.formatDocument",
+    "when": "editorHasDocumentFormattingProvider && editorTextFocus && !editorReadonly"
+  }
+]
+JSON
+)"
+
+  SETTINGS="$USER_DIR/settings.json"
+  KEYS="$USER_DIR/keybindings.json"
+  TS=$(date +%Y%m%d-%H%M%S)
+  [[ -f "$SETTINGS" ]] && cp "$SETTINGS" "$SETTINGS.bak.$TS"
+  [[ -f "$KEYS" ]] && cp "$KEYS" "$KEYS.bak.$TS"
+
+  if [[ -f "$SETTINGS" ]]; then
+    jq -s '.[0] * .[1]' "$SETTINGS" <(printf "%s" "$NEW_SETTINGS") > "$SETTINGS.merged.$TS" && mv "$SETTINGS.merged.$TS" "$SETTINGS"
+  else
+    printf "%s" "$NEW_SETTINGS" > "$SETTINGS"
+  fi
+
+  if [[ -f "$KEYS" ]]; then
+    jq -s '[.[0][], .[1][]] | unique_by(.key + ":" + .command)' "$KEYS" <(printf "%s" "$NEW_KEYS") > "$KEYS.merged.$TS" && mv "$KEYS.merged.$TS" "$KEYS"
+  else
+    printf "%s" "$NEW_KEYS" > "$KEYS"
+  fi
+}
+
 # =============================================================================
-#  9) "RICE" – THEMES & AESTHETICS
+#  7) "RICE" – THEMES & AESTHETICS
 # =============================================================================
 cook_rice() {
   set_mint_theme
@@ -1268,16 +1266,10 @@ main() {
   log "==== 5) APP INSTALLS ===="
   install_apps
 
-  log "==== 6) VS CODE EXTENSIONS ===="
-  install_vscode_extensions
-
-  log "==== 7) VS CODE SETTINGS ===="
-  apply_vscode_settings
-
-  log "==== 8) APP CONFIGURATIONS ===="
+  log "==== 6) APP CONFIGURATIONS ===="
   configure_apps
 
-  log "==== 9) RICE (THEMES & AESTHETICS) ===="
+  log "==== 7) RICE (THEMES & AESTHETICS) ===="
   cook_rice
 
   final_updates
