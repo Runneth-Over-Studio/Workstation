@@ -654,7 +654,7 @@ PY
   gsettings set org.cinnamon favorite-apps "$NEW" 2>/dev/null || true
 }
 
-configure_vscode {
+configure_vscode() {
   install_vscode_extensions
   apply_vscode_settings
 }
