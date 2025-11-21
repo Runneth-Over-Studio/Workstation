@@ -34,8 +34,8 @@ export DEBIAN_FRONTEND=noninteractive
 #  1) System Updates
 #  2) GPU Driver Helper (auto/NVIDIA/AMD/Intel)
 #  3) SDKs (.NET/Vulkan)
-#  4) LibreOffice via Flatpak
-#  5) App Installs
+#  4) App Installs
+#     • LibreOffice - Office Suite
 #     • Brave - Web Browser
 #     • git - Version Control
 #     • VS Code - Code Editor
@@ -49,8 +49,8 @@ export DEBIAN_FRONTEND=noninteractive
 #     • Kdenlive - Video Editing
 #     • OBS - Screen Recording
 #     • Flameshot - Screenshot Utility
-#  6) App Configurations
-#  7) "Rice" - Themes & Aesthetics
+#  5) App Configurations
+#  6) "Rice" - Themes & Aesthetics
 # =============================================================================
 
 # ----- helpers ---------------------------------------------------------------
@@ -240,8 +240,20 @@ install_vulkan_sdk() {
 }
 
 # =============================================================================
-#  4) LIBREOFFICE VIA FLATPAK
+#  4) APP INSTALLS
 # =============================================================================
+install_apps() {
+  libreoffice_flatpak
+  install_git
+  install_vscode
+  install_bitwarden
+  install_joplin
+  install_bleachbit
+  uninstall_firefox
+  install_brave_browser
+  install_creative_tools_flatpaks
+}
+
 libreoffice_flatpak() {
   log "Installing LibreOffice from Flathub (removing distro)..."
 
@@ -257,20 +269,6 @@ libreoffice_flatpak() {
   fi
 
   sudo flatpak install -y flathub org.libreoffice.LibreOffice
-}
-
-# =============================================================================
-#  5) APP INSTALLS
-# =============================================================================
-install_apps() {
-  install_git
-  install_vscode
-  install_bitwarden
-  install_joplin
-  install_bleachbit
-  uninstall_firefox
-  install_brave_browser
-  install_creative_tools_flatpaks
 }
 
 install_git() {
@@ -378,7 +376,7 @@ install_brave_browser() {
 }
 
 # =============================================================================
-#  6) APP CONFIGURATIONS
+#  5) APP CONFIGURATIONS
 # =============================================================================
 configure_apps() {
   configure_libreoffice
@@ -731,7 +729,7 @@ JSON
 }
 
 # =============================================================================
-#  7) "RICE" – THEMES & AESTHETICS
+#  6) "RICE" – THEMES & AESTHETICS
 # =============================================================================
 cook_rice() {
   set_mint_theme
@@ -1218,16 +1216,13 @@ main() {
   log "==== 3) SDKs ===="
   install_sdks
 
-  log "==== 4) LIBREOFFICE VIA FLATPAK ===="
-  libreoffice_flatpak
-
-  log "==== 5) APP INSTALLS ===="
+  log "==== 4) APP INSTALLS ===="
   install_apps
 
-  log "==== 6) APP CONFIGURATIONS ===="
+  log "==== 5) APP CONFIGURATIONS ===="
   configure_apps
 
-  log "==== 7) RICE (THEMES & AESTHETICS) ===="
+  log "==== 6) RICE (THEMES & AESTHETICS) ===="
   cook_rice
 
   final_updates
