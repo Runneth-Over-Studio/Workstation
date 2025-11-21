@@ -60,13 +60,6 @@ error() { printf "\n\033[1;31m[ERR ]\033[0m %s\n" "$*" >&2; }
 exists(){ command -v "$1" >/dev/null 2>&1; }
 is_pkg_installed() { dpkg -s "$1" >/dev/null 2>&1; }
 
-require_sudo() {
-  if [[ $EUID -ne 0 ]]; then
-    log "Requesting sudo privileges..."
-    sudo -v
-  fi
-}
-
 usage() {
   cat <<EOF
 Usage: $0 [--skip-vulkan] [--gpu=auto|nvidia|amd|intel|none] [--help]
@@ -117,21 +110,17 @@ done
 # =============================================================================
 system_update() {
   log "Updating APT index and upgrading the system..."
-  require_sudo
-  
+
   sudo apt-get update -y
   sudo apt-get -o Dpkg::Options::="--force-confnew" dist-upgrade -y
   sudo apt-get autoremove -y
 
   log "Installing common prerequisites..."
-  sudo apt-get install -y \
-    curl wget apt-transport-https ca-certificates gnupg lsb-release \
-    software-properties-common python3-minimal jq unzip
+  sudo apt-get install -y     curl wget apt-transport-https ca-certificates gnupg lsb-release     software-properties-common python3-minimal jq unzip
 }
 
 final_updates() {
   log "==== FINALIZE: Refreshing all packages before completion ===="
-  require_sudo
   # Make sure everything we installed is on the latest revs
   sudo apt-get update -y
   sudo apt-get -o Dpkg::Options::="--force-confnew" dist-upgrade -y
@@ -154,7 +143,6 @@ final_updates() {
 #      - none: do nothing
 # =============================================================================
 install_gpu_drivers() {
-  require_sudo
   local mode="$GPU_MODE"
 
   if [[ "$mode" == "none" ]]; then
@@ -188,7 +176,6 @@ install_gpu_drivers() {
       # drop a hint file the user can check later
       touch "$HOME/.reboot-recommended-nvidia" || true
       ;;
-
     amd|intel)
       log "Ensuring Mesa Vulkan stack (works for AMD & Intel)..."
       sudo apt-get install -y mesa-vulkan-drivers || true
@@ -196,7 +183,6 @@ install_gpu_drivers() {
       sudo apt-get install -y intel-media-va-driver-non-free || true
       log "Mesa Vulkan stack ensured."
       ;;
-
     *)
       warn "Unknown GPU mode '$mode'; skipping GPU driver helper."
       ;;
@@ -213,8 +199,7 @@ install_sdks() {
 
 install_dotnet_sdk() {
   log "Installing .NET SDK (current LTS) using dotnet-install.sh..."
-  require_sudo
-  
+
   DOTNET_INSTALL_SCRIPT=$(mktemp)
   curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$DOTNET_INSTALL_SCRIPT"
   chmod +x "$DOTNET_INSTALL_SCRIPT"
@@ -238,18 +223,11 @@ install_vulkan_sdk() {
   fi
 
   log "Installing Vulkan SDK (via distro packages)..."
-  require_sudo
-  
-  sudo apt-get install -y \
-  libvulkan1 vulkan-tools \
-  libvulkan-dev vulkan-validationlayers \
-  glslang-tools spirv-tools glslc libshaderc-dev \
-  mesa-vulkan-drivers
+
+  sudo apt-get install -y     libvulkan1 vulkan-tools     libvulkan-dev vulkan-validationlayers     glslang-tools spirv-tools glslc libshaderc-dev     mesa-vulkan-drivers
 
   # Optional X/Wayland dev headers, helpful for building sample apps with windows
-  sudo apt-get install -y \
-    libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev \
-    libwayland-dev wayland-protocols libxkbcommon-dev || true
+  sudo apt-get install -y     libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev     libwayland-dev wayland-protocols libxkbcommon-dev || true
 
   if command -v vulkaninfo >/dev/null 2>&1; then
     log "vulkaninfo (first lines):"
@@ -266,8 +244,7 @@ install_vulkan_sdk() {
 # =============================================================================
 libreoffice_flatpak() {
   log "Installing LibreOffice from Flathub (removing distro)..."
-  require_sudo
-  
+
   sudo apt-get remove -y --purge libreoffice* libreoffice-core* || true
   sudo apt-get autoremove -y || true
 
@@ -298,8 +275,7 @@ install_apps() {
 
 install_git() {
   log "Installing Git..."
-  require_sudo
-  
+
   sudo apt-get install -y git
 
   if command -v git >/dev/null 2>&1; then
@@ -314,8 +290,7 @@ install_git() {
 
 install_vscode() {
   log "Installing VS Code (via Microsoft APT repo)..."
-  require_sudo
-  
+
   if command -v flatpak >/dev/null 2>&1 && flatpak list --app | grep -qi 'com.visualstudio.code'; then
     sudo flatpak uninstall -y com.visualstudio.code || true
   fi
@@ -325,22 +300,18 @@ install_vscode() {
   if is_pkg_installed code; then
     log "VS Code (deb) already installed."; return 0
   fi
-  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-    | gpg --dearmor | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
-  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] https://packages.microsoft.com/repos/code stable main" \
-    | sudo tee /etc/apt/sources.list.d/vscode.list >/dev/null
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc     | gpg --dearmor | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
+  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] https://packages.microsoft.com/repos/code stable main"     | sudo tee /etc/apt/sources.list.d/vscode.list >/dev/null
   sudo apt-get update -y
   sudo apt-get install -y code
 }
 
 install_bitwarden() {
   log "Installing Bitwarden (prefer .deb, fallback Flatpak if fetch fails)..."
-  require_sudo
-  
+
   if ! is_pkg_installed bitwarden; then
     TMP_DEB=$(mktemp --suffix=.deb)
     if curl -fsSL -o "$TMP_DEB" "https://vault.bitwarden.com/download/?app=desktop&platform=linux&variant=deb"; then
-      require_sudo
       sudo dpkg -i "$TMP_DEB" || sudo apt-get -f install -y
       rm -f "$TMP_DEB"
     else
@@ -351,8 +322,7 @@ install_bitwarden() {
 
 install_joplin() {
   log "Installing Joplin via official install/update script (no Flatpak)..."
-  require_sudo
-  
+
   # Prevent AppImage launch issues on some bases
   sudo apt-get install -y libfuse2 || true
 
@@ -365,14 +335,13 @@ install_joplin() {
 
 install_bleachbit() {
   log "Installing BleachBit..."
-  require_sudo
-  
+
   sudo apt-get install -y bleachbit
 }
 
 install_creative_tools_flatpaks() {
   log "Installing creative tools and utilities via Flatpak..."
-  
+
   sudo flatpak install -y flathub org.blender.Blender
   sudo flatpak install -y flathub org.freecadweb.FreeCAD || sudo flatpak install -y flathub org.freecad.FreeCAD
   sudo flatpak install -y flathub org.inkscape.Inkscape
@@ -384,7 +353,7 @@ install_creative_tools_flatpaks() {
 
 uninstall_firefox() {
   log "Removing Firefox and related packages (if present)..."
-  require_sudo
+
   # Purge common Firefox package names; ignore failures if not present
   sudo apt-get remove -y --purge firefox firefox-esr firefox* || true
   sudo apt-get autoremove -y || true
@@ -420,7 +389,7 @@ configure_apps() {
 
 configure_libreoffice() {
   log "Configuring LibreOffice..."
-  
+
   cat > "$HOME/.configure-libreoffice-ui.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "Open LibreOffice → View → User Interface → Tabbed to apply."
@@ -802,8 +771,7 @@ set_mint_theme() {
 
 set_icon_theme() {
   log "Installing and applying Papirus icon theme..."
-  require_sudo
-  
+
   sudo add-apt-repository -y ppa:papirus/papirus || true
   sudo apt-get update -y
   sudo apt-get install -y papirus-icon-theme
@@ -814,8 +782,7 @@ set_icon_theme() {
 
 set_fonts() {
   log "Installing developer-friendly fonts (Fira Code, JetBrains Mono)..."
-  require_sudo
-  
+
   sudo apt-get install -y fonts-firacode fonts-jetbrains-mono
 }
 
@@ -824,22 +791,18 @@ tweak_time_and_date_prefs() {
 
   # Disable 24-hour clock
   if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
-    gsettings set org.cinnamon.desktop.interface clock-use-24h false 2>/dev/null || \
-      warn "Could not set clock to 12-hour format."
+    gsettings set org.cinnamon.desktop.interface clock-use-24h false 2>/dev/null ||       warn "Could not set clock to 12-hour format."
   elif gsettings list-schemas | grep -qx 'org.gnome.desktop.interface'; then
-    gsettings set org.gnome.desktop.interface clock-use-24h false 2>/dev/null || \
-      warn "Could not set clock to 12-hour format."
+    gsettings set org.gnome.desktop.interface clock-use-24h false 2>/dev/null ||       warn "Could not set clock to 12-hour format."
   else
     warn "No compatible schema for clock-use-24h found."
   fi
 
   # Set first day of week to Sunday
   if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.calendar'; then
-    gsettings set org.cinnamon.desktop.calendar first-day-of-week 'sunday' 2>/dev/null || \
-      warn "Could not set first day of week to Sunday (Cinnamon schema)."
+    gsettings set org.cinnamon.desktop.calendar first-day-of-week 'sunday' 2>/dev/null ||       warn "Could not set first day of week to Sunday (Cinnamon schema)."
   elif gsettings list-schemas | grep -qx 'org.gnome.desktop.calendar'; then
-    gsettings set org.gnome.desktop.calendar first-day-of-week 'sunday' 2>/dev/null || \
-      warn "Could not set first day of week to Sunday (GNOME schema)."
+    gsettings set org.gnome.desktop.calendar first-day-of-week 'sunday' 2>/dev/null ||       warn "Could not set first day of week to Sunday (GNOME schema)."
   else
     warn "No compatible schema for first-day-of-week found."
   fi
@@ -919,8 +882,7 @@ tweak_file_management_prefs() {
 
   # 1) Default view → List View
   if gsettings list-schemas | grep -qx 'org.nemo.preferences'; then
-    gsettings set org.nemo.preferences default-folder-viewer 'list-view' 2>/dev/null || \
-      warn "Could not set Nemo default view to list-view."
+    gsettings set org.nemo.preferences default-folder-viewer 'list-view' 2>/dev/null ||       warn "Could not set Nemo default view to list-view."
   else
     warn "Schema org.nemo.preferences not found (is Nemo installed/running?)."
     return 0
@@ -929,8 +891,7 @@ tweak_file_management_prefs() {
   # 2) Executable text files → View when opened
   #    org.nemo.preferences executable-text-activation: 'display'|'launch'|'ask'
   if gsettings list-keys org.nemo.preferences | grep -qx 'executable-text-activation'; then
-    gsettings set org.nemo.preferences executable-text-activation 'display' 2>/dev/null || \
-      warn "Could not set executable-text-activation to 'display'."
+    gsettings set org.nemo.preferences executable-text-activation 'display' 2>/dev/null ||       warn "Could not set executable-text-activation to 'display'."
   else
     warn "Key executable-text-activation not available on this Nemo version."
   fi
@@ -1041,8 +1002,7 @@ tweak_behavior_prefs() {
   # GNOME fallback (rare on Mint Cinnamon, but harmless if schema exists)
   if [[ "$centered" == false ]] && gsettings list-schemas | grep -qx 'org.gnome.mutter'; then
     if gsettings list-keys org.gnome.mutter | grep -qx 'center-new-windows'; then
-      gsettings set org.gnome.mutter center-new-windows true 2>/dev/null && \
-        log " • Window placement → center (org.gnome.mutter::center-new-windows)"
+      gsettings set org.gnome.mutter center-new-windows true 2>/dev/null &&         log " • Window placement → center (org.gnome.mutter::center-new-windows)"
       centered=true
     fi
   fi
@@ -1086,8 +1046,7 @@ tweak_behavior_prefs() {
 
 install_neofetch() {
   log "Installing Neofetch..."
-  require_sudo
-  
+
   sudo apt-get install -y neofetch
 
   log "Enabling Neofetch auto-launch for interactive shells..."
@@ -1127,7 +1086,7 @@ install_cinnamon_gtile() {
   fi
 
   log "Installing gTile (Cinnamon Spice)..."
-  
+
   local TMPDIR UUID EXT_BASE TARGET
   TMPDIR="$(mktemp -d)"
   UUID="gTile@shuairan"
@@ -1192,8 +1151,7 @@ install_cinnamon_transparent_panels() {
   TMPDIR="$(mktemp -d)"
   UUID="transparent-panels@germanfr.github.com"
 
-  git clone --depth=1 https://github.com/germanfr/cinnamon-transparent-panels.git \
-    "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1 || {
+  git clone --depth=1 https://github.com/germanfr/cinnamon-transparent-panels.git     "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1 || {
       warn "Git clone failed; aborting Transparent Panels."
       rm -rf "$TMPDIR"
       return 0
