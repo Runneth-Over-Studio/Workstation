@@ -14,6 +14,7 @@ Performs system updates, applies various themes & aesthetics, and installs & con
 
 - **.NET SDK**
 - **Vulkan SDK**
+- **Brave** - Web Browser
 - **git** - Version Control
 - **VS Code** - Code Editor
 - **LibreOffice** (Flatpak)
