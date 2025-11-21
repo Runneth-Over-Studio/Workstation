@@ -36,6 +36,7 @@ export DEBIAN_FRONTEND=noninteractive
 #  3) SDKs (.NET/Vulkan)
 #  4) LibreOffice via Flatpak
 #  5) App Installs
+#     • Brave - Web Browser
 #     • git - Version Control
 #     • VS Code - Code Editor
 #     • Joplin - Note-Taking
@@ -292,6 +293,8 @@ install_apps() {
   install_bitwarden
   install_joplin
   install_bleachbit
+  uninstall_firefox
+  install_brave_browser
   install_creative_tools_flatpaks
 }
 
@@ -379,6 +382,32 @@ install_creative_tools_flatpaks() {
   sudo flatpak install -y flathub org.kde.kdenlive
   sudo flatpak install -y flathub com.obsproject.Studio
   sudo flatpak install -y flathub org.flameshot.Flameshot
+}
+
+uninstall_firefox() {
+  log "Removing Firefox and related packages (if present)..."
+  require_sudo
+  # Purge common Firefox package names; ignore failures if not present
+  sudo apt-get remove -y --purge firefox firefox-esr firefox* || true
+  sudo apt-get autoremove -y || true
+
+  # Remove user profile (optional; keep backup if exists)
+  if [[ -d "$HOME/.mozilla" ]]; then
+    TS=$(date +%Y%m%d-%H%M%S)
+    mv "$HOME/.mozilla" "$HOME/.mozilla.bak.$TS"
+    log "Backed up existing Firefox profile to ~/.mozilla.bak.$TS"
+  fi
+}
+
+install_brave_browser() {
+  log "Installing Brave Browser via official one-liner..."
+  # Uses sudo internally when needed; our sudo keepalive covers it.
+  curl -fsS https://dl.brave.com/install.sh | sh
+
+  # Sanity check
+  if [[ ! -f /usr/share/applications/brave-browser.desktop ]]; then
+    warn "Brave desktop file not found; installation may have failed."
+  fi
 }
 
 # =============================================================================
@@ -494,8 +523,8 @@ JSON
 # =============================================================================
 configure_apps() {
   configure_libreoffice
-  configure_firefox
   configure_bleachbit
+  configure_browsers
 }
 
 configure_libreoffice() {
@@ -506,64 +535,6 @@ configure_libreoffice() {
 echo "Open LibreOffice → View → User Interface → Tabbed to apply."
 EOF
   chmod +x "$HOME/.configure-libreoffice-ui.sh"
-}
-
-configure_firefox() {
-  log "Configuring Firefox..."
-
-  local FF_DIR="$HOME/.mozilla/firefox"
-  local PROFILE=""
-  if [[ -d "$FF_DIR" ]]; then
-    PROFILE=$(find "$FF_DIR" -maxdepth 1 -type d -name "*.default*" | head -n 1 || true)
-  fi
-
-  if [[ -z "$PROFILE" || ! -d "$PROFILE" ]]; then
-    warn "No Firefox profile found yet. Skipping Firefox config (run Firefox once to create a profile)."
-    return 0
-  fi
-
-  local USERJS="$PROFILE/user.js"
-  local TS; TS="$(date +%Y%m%d-%H%M%S)"
-
-  # Prefs to enforce
-  local -a PREF_KEYS=(
-    'layers.acceleration.force-enabled'
-    'gfx.webrender.all'
-    'media.ffmpeg.vaapi.enabled'
-    'media.hardware-video-decoding.enabled'
-    'media.rdd-ffmpeg.enabled'
-    'gfx.x11-egl.force-enabled'
-    'widget.dmabuf.force-enabled'
-  )
-
-  # Backup existing user.js (if any)
-  if [[ -f "$USERJS" ]]; then
-    cp "$USERJS" "$USERJS.bak.$TS"
-  fi
-
-  # Start from existing (or empty), but strip previous copies of the keys we manage
-  local TMP="$USERJS.tmp.$TS"
-  [[ -f "$USERJS" ]] && cp "$USERJS" "$TMP" || : 
-
-  for k in "${PREF_KEYS[@]}"; do
-    # Remove any existing lines for this key
-    sed -i "\#^user_pref(\"$k\",#d" "$TMP" 2>/dev/null || true
-  done
-
-  # Append our managed block
-  {
-    echo '// ===== mint-workstation-setup: managed Firefox prefs ====='
-    echo 'user_pref("layers.acceleration.force-enabled", true);'
-    echo 'user_pref("gfx.webrender.all", true);'
-    echo 'user_pref("media.ffmpeg.vaapi.enabled", true);'
-    echo 'user_pref("media.hardware-video-decoding.enabled", true);'
-    echo 'user_pref("media.rdd-ffmpeg.enabled", true);'
-    echo 'user_pref("gfx.x11-egl.force-enabled", true);'
-    echo 'user_pref("widget.dmabuf.force-enabled", true);'
-  } >> "$TMP"
-
-  mv "$TMP" "$USERJS"
-  log "Firefox prefs applied at: $USERJS"
 }
 
 configure_bleachbit() {
@@ -607,11 +578,17 @@ trash = True
 [thumbnails]
 cache = True
 
-# Browsers left untouched by default:
-# [firefox]
+# Browser cleaners intentionally left untouched by default:
+# Brave/Chromium-based examples you could enable later:
+# [brave]
 # cache = True
-# crash_reports = True
-# (intentionally disabled here)
+# cookies = True
+# history = True
+#
+# [chromium]
+# cache = True
+# cookies = True
+# history = True
 
 # Package managers intentionally left untouched:
 # [apt]
@@ -620,6 +597,170 @@ cache = True
 INI
 
   log "BleachBit defaults written to $CFG_FILE (backup kept if one existed)."
+}
+
+configure_browsers() {
+  set_brave_default_browser
+  pin_brave_to_panel_cinnamon
+}
+
+set_brave_default_browser() {
+  log "Setting Brave as the default web browser..."
+  # Best-effort default via xdg-settings (works for most desktop environments)
+  if command -v xdg-settings >/dev/null 2>&1; then
+    xdg-settings set default-web-browser brave-browser.desktop || true
+  fi
+
+  # Cinnamon-specific (sets MIME handlers via gsettings if available)
+  if command -v gsettings >/dev/null 2>&1; then
+    # Some systems honor this; others rely entirely on xdg-mime/xdg-settings.
+    gsettings set org.cinnamon.desktop.default-applications.browser exec 'brave-browser' 2>/dev/null || true
+    gsettings set org.cinnamon.desktop.default-applications.browser name 'Brave Browser' 2>/dev/null || true
+  fi
+}
+
+pin_brave_to_panel_cinnamon() {
+  # Only for Cinnamon sessions; best-effort edit of panel-launchers applet config.
+  if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
+    warn "Cinnamon not detected; skipping Brave pin to panel."
+    return 0
+  fi
+
+  local BRAVE_DESKTOP="brave-browser.desktop"
+  local NEMO_DESKTOP="nemo.desktop"
+  # Common terminal desktop id on Mint Cinnamon; fallback if different
+  local TERM_DESKTOP="org.gnome.Terminal.desktop"
+  [[ -f "/usr/share/applications/org.xfce.terminal.desktop" ]] && TERM_DESKTOP="org.xfce.terminal.desktop"
+  [[ -f "/usr/share/applications/gnome-terminal.desktop" ]] && TERM_DESKTOP="gnome-terminal.desktop"
+
+  # Cinnamon stores applet settings here:
+  local CFG_BASE="$HOME/.cinnamon/configs/panel-launchers@cinnamon.org"
+  if [[ ! -d "$CFG_BASE" ]]; then
+    warn "No panel-launchers config directory found; adding Brave to favorites instead."
+    add_brave_to_favorites
+    return 0
+  fi
+
+  # Pick the first panel-launchers instance (most systems have one)
+  local INST_DIR
+  INST_DIR="$(find "$CFG_BASE" -mindepth 1 -maxdepth 1 -type d | head -n 1 || true)"
+  if [[ -z "$INST_DIR" ]]; then
+    warn "panel-launchers instance not found; adding Brave to favorites instead."
+    add_brave_to_favorites
+    return 0
+  fi
+
+  # The settings file is commonly settings.json (older: xlet-settings.json)
+  local CFG_FILE="$INST_DIR/settings.json"
+  [[ -f "$CFG_FILE" ]] || CFG_FILE="$INST_DIR/xlet-settings.json"
+
+  if [[ ! -f "$CFG_FILE" ]]; then
+    warn "panel-launchers settings file not found; adding Brave to favorites instead."
+    add_brave_to_favorites
+    return 0
+  fi
+
+  log "Enabling Brave in Cinnamon panel launchers…"
+  # Insert brave between Nemo and Terminal if possible; otherwise add after Nemo; otherwise append.
+  python3 - "$CFG_FILE" "$BRAVE_DESKTOP" "$NEMO_DESKTOP" "$TERM_DESKTOP" <<'PY'
+import json, os, sys
+cfg_path, brave, nemo, term = sys.argv[1:5]
+try:
+    with open(cfg_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+
+lst = data.get('launchersList')
+if not isinstance(lst, list):
+    lst = []
+
+# normalize to strings only
+lst = [x for x in lst if isinstance(x, str)]
+
+def ensure(item, index=None):
+    if item in lst:
+        return
+    if index is None:
+        lst.append(item)
+    else:
+        if index < 0: index = 0
+        if index > len(lst): index = len(lst)
+        lst.insert(index, item)
+
+if brave not in lst:
+    try:
+        i_nemo = lst.index(nemo)
+    except ValueError:
+        i_nemo = None
+    # prefer putting Brave after Nemo
+    if i_nemo is not None:
+        insert_at = i_nemo + 1
+        # If terminal exists and is exactly at i_nemo+1, keep brave between them
+        try:
+            i_term = lst.index(term)
+            # If terminal is not immediately after nemo, still put brave after nemo
+        except ValueError:
+            pass
+        ensure(brave, insert_at)
+    else:
+        # If nemo missing, try placing before terminal
+        try:
+            i_term = lst.index(term)
+            ensure(brave, i_term)
+        except ValueError:
+            # else just append
+            ensure(brave, None)
+
+data['launchersList'] = lst
+tmp = cfg_path + ".tmp"
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+os.replace(tmp, cfg_path)
+print("OK")
+PY
+
+  # Soft-reload panel to apply (no logout)
+  pkill -HUP -f "cinnamon$" 2>/dev/null || true
+}
+
+add_brave_to_favorites() {
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not available; cannot add Brave to favorites."
+    return 0
+  fi
+
+  local CURRENT NEW
+  CURRENT="$(gsettings get org.cinnamon favorite-apps 2>/dev/null || echo "[]")"
+
+  NEW="$(python3 - "$CURRENT" <<'PY'
+import ast, sys
+
+cur = sys.argv[1]
+try:
+    fav = ast.literal_eval(cur)
+except Exception:
+    fav = []
+
+if not isinstance(fav, list):
+    fav = []
+
+def add_after(lst, after_item, new_item):
+    if new_item in lst:
+        return lst
+    try:
+        i = lst.index(after_item)
+        lst.insert(i + 1, new_item)
+    except ValueError:
+        lst.append(new_item)
+    return lst
+
+fav = add_after(fav, "nemo.desktop", "brave-browser.desktop")
+print(str(fav).replace('"', "'"))
+PY
+)"
+
+  gsettings set org.cinnamon favorite-apps "$NEW" 2>/dev/null || true
 }
 
 # =============================================================================
