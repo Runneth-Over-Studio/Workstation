@@ -471,7 +471,6 @@ set_brave_default_browser() {
 
   # Cinnamon-specific (sets MIME handlers via gsettings if available)
   if command -v gsettings >/dev/null 2>&1; then
-    # Some systems honor this; others rely entirely on xdg-mime/xdg-settings.
     gsettings set org.cinnamon.desktop.default-applications.browser exec 'brave-browser' 2>/dev/null || true
     gsettings set org.cinnamon.desktop.default-applications.browser name 'Brave Browser' 2>/dev/null || true
   fi
@@ -481,6 +480,7 @@ pin_brave_to_panel_cinnamon() {
   # Only for Cinnamon sessions; best-effort edit of panel-launchers applet config.
   if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
     warn "Cinnamon not detected; skipping Brave pin to panel."
+    add_brave_to_favorites
     return 0
   fi
 
@@ -519,63 +519,90 @@ pin_brave_to_panel_cinnamon() {
   fi
 
   log "Enabling Brave in Cinnamon panel launchers…"
-  # Insert brave between Nemo and Terminal if possible; otherwise add after Nemo; otherwise append.
+  # This Python helper tries multiple known formats:
+  # - { "launchers": { "value": [ ... ] } }
+  # - { "launcherList": { "value": [ ... ] } }
+  # - { "launchersList": [ ... ] }
+  # - plain top-level list (rare, but we handle it)
   python3 - "$CFG_FILE" "$BRAVE_DESKTOP" "$NEMO_DESKTOP" "$TERM_DESKTOP" <<'PY'
 import json, os, sys
+
 cfg_path, brave, nemo, term = sys.argv[1:5]
+
 try:
     with open(cfg_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 except Exception:
     data = {}
 
-lst = data.get('launchersList')
-if not isinstance(lst, list):
-    lst = []
+launcher_list = None
+container_key = None
+uses_value_wrapper = False
 
-# normalize to strings only
-lst = [x for x in lst if isinstance(x, str)]
+# Try a few likely keys in Cinnamon configs
+for key in ("launchers", "launcherList", "launchersList"):
+    if isinstance(data, dict) and key in data:
+        val = data[key]
+        # Newer-style: { "launchers": { "value": [ ... ] } }
+        if isinstance(val, dict) and "value" in val and isinstance(val["value"], list):
+            launcher_list = val["value"]
+            container_key = key
+            uses_value_wrapper = True
+            break
+        # Simpler style: { "launchersList": [ ... ] }
+        if isinstance(val, list):
+            launcher_list = val
+            container_key = key
+            break
 
-def ensure(item, index=None):
-    if item in lst:
+# Fallback: whole file is a list
+if launcher_list is None:
+    if isinstance(data, list):
+        launcher_list = data
+        container_key = None
+    else:
+        launcher_list = []
+
+# Normalize to strings only
+launcher_list = [x for x in launcher_list if isinstance(x, str)]
+
+def ensure(item, after=None):
+    if item in launcher_list:
         return
-    if index is None:
-        lst.append(item)
+    if after and after in launcher_list:
+        idx = launcher_list.index(after) + 1
+        launcher_list.insert(idx, item)
     else:
-        if index < 0: index = 0
-        if index > len(lst): index = len(lst)
-        lst.insert(index, item)
+        launcher_list.append(item)
 
-if brave not in lst:
-    try:
-        i_nemo = lst.index(nemo)
-    except ValueError:
-        i_nemo = None
-    # prefer putting Brave after Nemo
-    if i_nemo is not None:
-        insert_at = i_nemo + 1
-        # If terminal exists and is exactly at i_nemo+1, keep brave between them
-        try:
-            i_term = lst.index(term)
-            # If terminal is not immediately after nemo, still put brave after nemo
-        except ValueError:
-            pass
-        ensure(brave, insert_at)
+# Prefer to put Brave after Nemo if possible
+ensure(brave, after=nemo)
+
+# If Nemo isn't there but terminal is, try to put Brave before terminal
+if nemo not in launcher_list and term in launcher_list and brave not in launcher_list:
+    idx = launcher_list.index(term)
+    launcher_list.insert(idx, brave)
+
+# If still not added for whatever reason, append
+if brave not in launcher_list:
+    launcher_list.append(brave)
+
+# Write back in the same structural shape we found
+if container_key is None:
+    out = launcher_list
+else:
+    if uses_value_wrapper:
+        if not isinstance(data.get(container_key), dict):
+            data[container_key] = {}
+        data[container_key]["value"] = launcher_list
     else:
-        # If nemo missing, try placing before terminal
-        try:
-            i_term = lst.index(term)
-            ensure(brave, i_term)
-        except ValueError:
-            # else just append
-            ensure(brave, None)
+        data[container_key] = launcher_list
+    out = data
 
-data['launchersList'] = lst
 tmp = cfg_path + ".tmp"
 with open(tmp, 'w', encoding='utf-8') as f:
-    json.dump(data, f, indent=2)
+    json.dump(out, f, indent=2)
 os.replace(tmp, cfg_path)
-print("OK")
 PY
 
   # Soft-reload panel to apply (no logout)
@@ -727,8 +754,8 @@ cook_rice() {
   tweak_file_management_prefs
   tweak_behavior_prefs
   install_neofetch
-  install_cinnamon_gtile
-  install_cinnamon_transparent_panels
+  # install_cinnamon_gtile
+  # install_cinnamon_transparent_panels
 }
 
 set_mint_theme() {
