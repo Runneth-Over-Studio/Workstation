@@ -685,11 +685,8 @@ apply_vscode_settings() {
   "git.enableSmartCommit": true,
   "csharpOrganizeUsings.sortOrder": "",
   "csharpOrganizeUsings.splitGroups": false,
-  "dotnetAcquisitionExtension.existingDotnetPath": "/usr/share/dotnet/dotnet",
-  "dotnetAcquisitionExtension.enableTelemetry": false,
-  "eslint.validate": ["javascript","javascriptreact","typescript","typescriptreact"],
-  "csharp.semanticHighlighting.enabled": true,
-  "csharp.suppressDotnetInstallWarning": true
+  "telemetry.telemetryLevel": "off",
+  "github.copilot.nextEditSuggestions.enabled": true
 }
 JSON
 )"
