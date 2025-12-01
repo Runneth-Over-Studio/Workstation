@@ -365,7 +365,7 @@ uninstall_firefox() {
 }
 
 install_brave_browser() {
-  log "Installing Brave Browser via official one-liner..."
+  log "Installing Brave Browser..."
   # Uses sudo internally when needed; our sudo keepalive covers it.
   curl -fsS https://dl.brave.com/install.sh | sh
 
@@ -396,7 +396,7 @@ EOF
 }
 
 configure_bleachbit() {
-  log "Configuring BleachBit with safe, conservative defaults (user-level)..."
+  log "Configuring BleachBit..."
 
   local CFG_DIR="$HOME/.config/bleachbit"
   local CFG_FILE="$CFG_DIR/bleachbit.ini"
