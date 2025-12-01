@@ -631,12 +631,13 @@ install_vscode_extensions() {
     warn "VS Code not detected; skipping extension installs."; return 0
   fi
 
-  log "Installing VS Code extensions for .NET, web, and Avalonia development..."
+  log "Installing VS Code extensions for .NET and web development..."
 
   # Headless warm-up (non-fatal) to ensure 'code' CLI is ready
   timeout 10s code --version >/dev/null 2>&1 || true
 
-  code --install-extension ms-dotnettools.vscode-dotnet-runtime   || true
+  code --install-extension formulahendry.auto-close-tag           || true
+  code --install-extension AvaloniaTeam.vscode-avalonia           || true
   code --install-extension ms-dotnettools.csharp                  || true
   code --install-extension ms-dotnettools.csdevkit                || true
   code --install-extension JosKreativ.vscode-csharp-extensions    || true
@@ -644,19 +645,8 @@ install_vscode_extensions() {
   code --install-extension dbaeumer.vscode-eslint                 || true
   code --install-extension ecmel.vscode-html-css                  || true
   code --install-extension xabikos.JavaScriptSnippets             || true
-  code --install-extension formulahendry.auto-close-tag           || true
-  code --install-extension christian-kohler.path-intellisense     || true
   code --install-extension PKief.material-icon-theme              || true
-  code --install-extension KatsuteDev.background                  || true
-  code --install-extension AvaloniaTeam.vscode-avalonia           || true
-
-  # Install Avalonia .NET project templates
-  if command -v dotnet >/dev/null 2>&1; then
-    log "Installing Avalonia .NET project templates..."
-    dotnet new install Avalonia.Templates || warn "Avalonia.Templates install failed."
-  else
-    warn ".NET SDK not found; skipping Avalonia.Templates install."
-  fi
+  code --install-extension christian-kohler.path-intellisense     || true
 
   log "VS Code extension installation complete."
 }
