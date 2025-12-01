@@ -383,6 +383,7 @@ configure_apps() {
   configure_bleachbit
   configure_browsers
   configure_vscode
+  configure_favorites
 }
 
 configure_libreoffice() {
@@ -630,17 +631,9 @@ except Exception:
 if not isinstance(fav, list):
     fav = []
 
-def add_after(lst, after_item, new_item):
-    if new_item in lst:
-        return lst
-    try:
-        i = lst.index(after_item)
-        lst.insert(i + 1, new_item)
-    except ValueError:
-        lst.append(new_item)
-    return lst
+if "brave-browser.desktop" not in fav:
+    fav.append("brave-browser.desktop")
 
-fav = add_after(fav, "nemo.desktop", "brave-browser.desktop")
 print(str(fav).replace('"', "'"))
 PY
 )"
@@ -740,6 +733,66 @@ JSON
   else
     printf "%s" "$NEW_KEYS" > "$KEYS"
   fi
+}
+
+configure_favorites() {
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not available; cannot configure favorites."
+    return 0
+  fi
+
+  log "Updating Cinnamon favorites (remove Files/Terminal, add Thunderbird/Joplin)..."
+
+  local CURRENT NEW
+  CURRENT="$(gsettings get org.cinnamon favorite-apps 2>/dev/null || echo "[]")"
+
+  NEW="$(python3 - "$CURRENT" <<'PY'
+import ast, sys
+
+cur = sys.argv[1]
+
+# Parse current favorites list
+try:
+    fav = ast.literal_eval(cur)
+except Exception:
+    fav = []
+
+if not isinstance(fav, list):
+    fav = []
+
+# Entries we want to remove from favorites (already pinned to panel)
+to_remove = {
+    "nemo.desktop",
+    "org.gnome.Terminal.desktop",
+    "gnome-terminal.desktop",
+    "org.xfce.terminal.desktop",
+    "xterm.desktop",
+}
+
+fav = [item for item in fav if item not in to_remove]
+
+def ensure(lst, item):
+    if item not in lst:
+        lst.append(item)
+
+# Ensure Thunderbird
+ensure(fav, "thunderbird.desktop")
+
+# Joplin can have different .desktop IDs depending on how it's installed
+joplin_candidates = [
+    "appimagekit-joplin.desktop",  # common from official Joplin script
+    "joplin.desktop",
+]
+
+# If none of the candidates are present, add the first candidate
+if not any(c in fav for c in joplin_candidates):
+    ensure(fav, joplin_candidates[0])
+
+print(str(fav).replace('"', "'"))
+PY
+)"
+
+  gsettings set org.cinnamon favorite-apps "$NEW" 2>/dev/null || true
 }
 
 # =============================================================================
