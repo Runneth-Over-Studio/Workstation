@@ -871,66 +871,22 @@ tweak_time_and_date_prefs() {
 tweak_screensaver_prefs() {
   log "Customizing lock screen..."
 
-  # Candidate schemas seen across Cinnamon/Mint versions
-  local schemas=(
-    "org.cinnamon.desktop.screensaver"
-    "org.cinnamon.screensaver"
-    "org.gnome.desktop.screensaver"
-  )
+  # We know the exact schema and keys from your system
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.screensaver'; then
+    gsettings set org.cinnamon.desktop.screensaver allow-media-control false 2>/dev/null || \
+      warn "Could not disable media controls on lock screen."
+    gsettings set org.cinnamon.desktop.screensaver show-album-art false 2>/dev/null || \
+      warn "Could not disable album art on lock screen."
+    gsettings set org.cinnamon.desktop.screensaver floating-widgets false 2>/dev/null || \
+      warn "Could not disable floating widgets on lock screen."
+  else
+    warn "Screensaver schema not found; skipping lock screen tweaks."
+  fi
 
-  # Candidate key names for each preference (varies by version)
-  local media_keys=(
-    "show-media-controls" "media-controls" "allow-media-control"
-    "show-media-player" "show-media-player-controls"
-  )
-  local album_keys=(
-    "show-album-art" "album-art" "show-media-artwork" "show-albumart"
-  )
-  local floating_keys=(
-    "allow-floating" "allow-floating-window" "allow-floating-controls"
-    "allow-floating-ambient"
-  )
-
-  # Utility: does a schema exist?
-  schema_exists() { gsettings list-schemas | grep -qx "$1"; }
-
-  # Utility: does a key exist in schema?
-  key_exists() { gsettings list-keys "$1" 2>/dev/null | grep -qx "$2"; }
-
-  # Try to set the first matching key in any schema for a given list of keys
-  set_first_match_false() {
-    local -n _keys_ref=$1   # nameref to the key array
-    local label="$2"        # human-friendly label for logs
-    local set_ok=false
-
-    for sch in "${schemas[@]}"; do
-      schema_exists "$sch" || continue
-      for k in "${_keys_ref[@]}"; do
-        if key_exists "$sch" "$k"; then
-          if gsettings set "$sch" "$k" false 2>/dev/null; then
-            log " • $label → false  ($sch::$k)"
-            set_ok=true
-            break 2
-          fi
-        fi
-      done
-    done
-
-    if [[ "$set_ok" == false ]]; then
-      warn " • $label not found on this system (skipped)."
-    fi
-  }
-
-  # Apply toggles
-  set_first_match_false media_keys   "Show media player controls"
-  set_first_match_false album_keys   "Show album art"
-  set_first_match_false floating_keys "Allow floating overlay"
-
-  # Try to refresh the screensaver so changes apply
+  # Refresh screensaver
   if command -v cinnamon-screensaver-command >/dev/null 2>&1; then
     cinnamon-screensaver-command -r 2>/dev/null || true
   else
-    # As a last resort, gently nudge the process (non-fatal)
     pkill -HUP -f cinnamon-screensaver 2>/dev/null || true
   fi
 }
@@ -938,117 +894,48 @@ tweak_screensaver_prefs() {
 tweak_file_management_prefs() {
   log "Tweaking Nemo file management preferences (view, behavior, toolbar)..."
 
-  # 1) Default view → List View
-  if gsettings list-schemas | grep -qx 'org.nemo.preferences'; then
-    gsettings set org.nemo.preferences default-folder-viewer 'list-view' 2>/dev/null ||       warn "Could not set Nemo default view to list-view."
-  else
+  if ! gsettings list-schemas | grep -qx 'org.nemo.preferences'; then
     warn "Schema org.nemo.preferences not found (is Nemo installed/running?)."
     return 0
   fi
 
+  # 1) Default view → List View
+  gsettings set org.nemo.preferences default-folder-viewer 'list-view' 2>/dev/null || \
+    warn "Could not set Nemo default view to list-view."
+
   # 2) Executable text files → View when opened
-  #    org.nemo.preferences executable-text-activation: 'display'|'launch'|'ask'
   if gsettings list-keys org.nemo.preferences | grep -qx 'executable-text-activation'; then
-    gsettings set org.nemo.preferences executable-text-activation 'display' 2>/dev/null ||       warn "Could not set executable-text-activation to 'display'."
-  else
-    warn "Key executable-text-activation not available on this Nemo version."
+    gsettings set org.nemo.preferences executable-text-activation 'display' 2>/dev/null || \
+      warn "Could not set executable-text-activation to 'display'."
   fi
 
-  # 3) Click twice to rename (best-effort across Nemo versions)
-  #    Try a few likely keys; set the first one that exists to true.
-  local rename_keys=(
-    "click-to-rename"
-    "rename-on-click"
-    "rename-by-clicking"
-    "click-double-rename"
-  )
-  local set_rename=false
-  for rk in "${rename_keys[@]}"; do
-    if gsettings list-keys org.nemo.preferences | grep -qx "$rk"; then
-      if gsettings set org.nemo.preferences "$rk" true 2>/dev/null; then
-        log "Enabled 'click twice to rename' via org.nemo.preferences::$rk"
-        set_rename=true
-        break
-      fi
-    fi
-  done
-  [[ "$set_rename" == false ]] && warn "Rename-on-click key not found on this Nemo version (skipped)."
+  # 3) Ensure Reload button in toolbar
+  if gsettings list-keys org.nemo.preferences | grep -qx 'show-reload-icon-toolbar'; then
+    gsettings set org.nemo.preferences show-reload-icon-toolbar true 2>/dev/null || \
+      warn "Could not enable Nemo reload toolbar button."
+  fi
 
-  # 4) Toolbar → ensure Refresh button present (best-effort)
-  #    Some Nemo versions expose a list for toolbar items.
-  #    We look for common candidates and add 'reload' if missing.
-  local toolbar_keys=(
-    "toolbar-items"
-    "toolbar-buttons"
-    "toolbar-layout"
-  )
-  local added_reload=false
-  for tk in "${toolbar_keys[@]}"; do
-    if gsettings list-keys org.nemo.preferences | grep -qx "$tk"; then
-      # Read existing list (might be @as [], or a list like ['new-folder','reload',...])
-      local cur
-      cur="$(gsettings get org.nemo.preferences "$tk" 2>/dev/null || true)"
-      # Normalize empty -> []
-      [[ -z "$cur" ]] && cur="[]"
-      # If already contains 'reload', skip
-      if printf "%s" "$cur" | grep -q "'reload'"; then
-        log "Toolbar already contains 'reload' (via $tk)."
-        added_reload=true
-        break
-      fi
-      # Append 'reload' safely using python to handle GVariant array syntax
-      local newval
-      newval="$(python3 - <<PY
-import ast, sys
-s=${cur!r}
-try:
-    # Accept either @as [] or normal list syntax from gsettings
-    if s.startswith('@as'):
-        # strip @as
-        s=s.split(' ',1)[1]
-    arr=ast.literal_eval(s)
-except Exception:
-    arr=[]
-if 'reload' not in arr:
-    arr.append('reload')
-print(str(arr).replace('"', "'"))
-PY
-)"
-      if [[ -n "$newval" ]]; then
-        gsettings set org.nemo.preferences "$tk" "$newval" 2>/dev/null && {
-          log "Added 'reload' to toolbar via org.nemo.preferences::$tk"
-          added_reload=true
-          break
-        }
-      fi
-    fi
-  done
-  [[ "$added_reload" == false ]] && warn "Could not locate a toolbar items key to add 'reload' (skipped)."
+  #TODO: 4) Rename on double-click.
 
-  # 5) Soft-reload Nemo so changes apply (no logout)
-  #    - Quit all Nemo instances; the desktop instance respawns automatically on Cinnamon.
+  # Soft-reload Nemo so changes apply
   if command -v nemo >/dev/null 2>&1; then
     nemo -q 2>/dev/null || pkill -HUP -f 'nemo' 2>/dev/null || true
   fi
 }
 
 tweak_behavior_prefs() {
-  log "Tweaking behavior prefs (center new windows; open menu on hover)..."
+  log "Tweaking behavior prefs..."
 
-  # ----- Center newly opened windows -----
-  # Cinnamon's window manager is 'muffin' (GNOME mutter fork).
-  # Prefer explicit placement mode if available; also try boolean fallback.
+  1) Center windows.
   local centered=false
 
   if gsettings list-schemas | grep -qx 'org.cinnamon.muffin'; then
-    # Try placement-mode -> 'center'
     if gsettings list-keys org.cinnamon.muffin | grep -qx 'placement-mode'; then
       if gsettings set org.cinnamon.muffin placement-mode 'center' 2>/dev/null; then
         log " • Window placement → center (org.cinnamon.muffin::placement-mode)"
         centered=true
       fi
     fi
-    # Fallback: center-new-windows (bool), if exposed on this build
     if [[ "$centered" == false ]] && gsettings list-keys org.cinnamon.muffin | grep -qx 'center-new-windows'; then
       if gsettings set org.cinnamon.muffin center-new-windows true 2>/dev/null; then
         log " • Window placement → center (org.cinnamon.muffin::center-new-windows)"
@@ -1057,83 +944,17 @@ tweak_behavior_prefs() {
     fi
   fi
 
-  # GNOME fallback (rare on Mint Cinnamon, but harmless if schema exists)
   if [[ "$centered" == false ]] && gsettings list-schemas | grep -qx 'org.gnome.mutter'; then
     if gsettings list-keys org.gnome.mutter | grep -qx 'center-new-windows'; then
-      gsettings set org.gnome.mutter center-new-windows true 2>/dev/null &&         log " • Window placement → center (org.gnome.mutter::center-new-windows)"
+      gsettings set org.gnome.mutter center-new-windows true 2>/dev/null && \
+        log " • Window placement → center (org.gnome.mutter::center-new-windows)"
       centered=true
     fi
   fi
 
   [[ "$centered" == false ]] && warn " • Could not find a window-centering key on this system (skipped)."
 
-  # ----- Open the main menu on hover -----
-  # Cinnamon menu settings live under an applet schema; names vary by version/theme.
-  # We'll probe common schemas and keys and set the first match to true.
-  local -a menu_schemas=(
-    "org.cinnamon.applets.menu@cinnamon.org"
-    "org.cinnamon.applets.cinnamon-menu@cinnamon.org"
-    "org.cinnamon.applets.MintMenu@linuxmint.com"
-  )
-  local -a menu_keys=(
-    "activate-on-hover"
-    "open-on-hover"
-    "menu-open-hover"
-    "hover-to-open"
-  )
-
-  local hover_set=false
-  for sch in "${menu_schemas[@]}"; do
-    if gsettings list-schemas | grep -qx "$sch"; then
-      for key in "${menu_keys[@]}"; do
-        if gsettings list-keys "$sch" 2>/dev/null | grep -qx "$key"; then
-          if gsettings set "$sch" "$key" true 2>/dev/null; then
-            log " • Menu hover open → enabled ($sch::$key)"
-            hover_set=true
-            break 2
-          fi
-        fi
-      done
-    fi
-  done
-  [[ "$hover_set" == false ]] && warn " • Menu ‘open on hover’ key not found (skipped)."
-
-  # Soft reload Cinnamon so changes apply immediately
-  pkill -HUP -f "cinnamon$" 2>/dev/null || true
-}
-
-install_neofetch() {
-  log "Installing Neofetch..."
-
-  sudo apt-get install -y neofetch
-
-  log "Enabling Neofetch auto-launch for interactive shells..."
-  local MARKER="neofetch auto-launch (added by mint-workstation-setup)"
-  NEOFETCH_SNIPPET="$(cat <<'EOF'
-# >>> neofetch auto-launch (added by mint-workstation-setup) >>>
-if command -v neofetch >/dev/null 2>&1; then
-  case "$-" in
-    *i*) neofetch ;;
-  esac
-fi
-# <<< neofetch auto-launch <<<
-EOF
-)"
-
-  # Append once to ~/.bashrc and ~/.zshrc (create file if missing)
-  for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [[ -f "$RC" ]]; then
-      if ! grep -q "$MARKER" "$RC"; then
-        printf "\n%s\n" "$NEOFETCH_SNIPPET" >> "$RC"
-        log "Added Neofetch auto-launch to $(basename "$RC")"
-      else
-        log "Neofetch auto-launch already present in $(basename "$RC")"
-      fi
-    else
-      printf "%s\n" "$NEOFETCH_SNIPPET" > "$RC"
-      log "Created $(basename "$RC") with Neofetch auto-launch"
-    fi
-  done
+  #TODO: 2) Open menu on hover.
 }
 
 install_cinnamon_gtile() {
