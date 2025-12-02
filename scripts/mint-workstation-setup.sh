@@ -852,7 +852,7 @@ set_fonts() {
 }
 
 tweak_time_and_date_prefs() {
-  log "Tweaking time and date preferences (12-hour clock)..."
+  log "Tweaking time and date preferences..."
 
   # Disable 24-hour clock
   if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
@@ -892,7 +892,7 @@ tweak_screensaver_prefs() {
 }
 
 tweak_file_management_prefs() {
-  log "Tweaking Nemo file management preferences (view, behavior, toolbar)..."
+  log "Tweaking Nemo file management preferences..."
 
   if ! gsettings list-schemas | grep -qx 'org.nemo.preferences'; then
     warn "Schema org.nemo.preferences not found (is Nemo installed/running?)."
