@@ -852,24 +852,17 @@ set_fonts() {
 }
 
 tweak_time_and_date_prefs() {
-  log "Tweaking time and date preferences (12-hour clock, Sunday start)..."
+  log "Tweaking time and date preferences (12-hour clock)..."
 
   # Disable 24-hour clock
   if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
-    gsettings set org.cinnamon.desktop.interface clock-use-24h false 2>/dev/null ||       warn "Could not set clock to 12-hour format."
+    gsettings set org.cinnamon.desktop.interface clock-use-24h false 2>/dev/null || \
+      warn "Could not set clock to 12-hour format."
   elif gsettings list-schemas | grep -qx 'org.gnome.desktop.interface'; then
-    gsettings set org.gnome.desktop.interface clock-use-24h false 2>/dev/null ||       warn "Could not set clock to 12-hour format."
+    gsettings set org.gnome.desktop.interface clock-use-24h false 2>/dev/null || \
+      warn "Could not set clock to 12-hour format."
   else
     warn "No compatible schema for clock-use-24h found."
-  fi
-
-  # Set first day of week to Sunday
-  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.calendar'; then
-    gsettings set org.cinnamon.desktop.calendar first-day-of-week 'sunday' 2>/dev/null ||       warn "Could not set first day of week to Sunday (Cinnamon schema)."
-  elif gsettings list-schemas | grep -qx 'org.gnome.desktop.calendar'; then
-    gsettings set org.gnome.desktop.calendar first-day-of-week 'sunday' 2>/dev/null ||       warn "Could not set first day of week to Sunday (GNOME schema)."
-  else
-    warn "No compatible schema for first-day-of-week found."
   fi
 
   log "Time and date preferences updated."
