@@ -926,7 +926,7 @@ tweak_file_management_prefs() {
 tweak_behavior_prefs() {
   log "Tweaking behavior prefs..."
 
-  1) Center windows.
+  # 1) Center windows.
   local centered=false
 
   if gsettings list-schemas | grep -qx 'org.cinnamon.muffin'; then
