@@ -960,20 +960,22 @@ install_cinnamon_extensions() {
 }
 
 install_cinnamon_transparent_panels() {
-  log "Installing Transparent Panels (Cinnamon extension)..."
+  log "Installing Transparent Panels (via upstream utils.sh)..."
 
-  local TMPDIR
+  local TMPDIR EXT_DIR POL_URL POL_FILE
   TMPDIR="$(mktemp -d)"
 
-  git clone https://github.com/germanfr/cinnamon-transparent-panels.git \
-    "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1 || {
+  # Clone upstream repo
+  if ! git clone --depth=1 https://github.com/germanfr/cinnamon-transparent-panels.git \
+    "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1; then
     warn "Git clone failed; aborting Transparent Panels install."
     rm -rf "$TMPDIR"
     return 0
-  }
+  fi
 
+  # Run installer as current user
   if ( cd "$TMPDIR/cinnamon-transparent-panels" && ./utils.sh install ); then
-    log "Transparent Panels installed via upstream utils.sh. You can enable it from Cinnamon's Extensions settings."
+    log "Transparent Panels installed via upstream utils.sh."
   else
     warn "Transparent Panels installer (utils.sh) failed."
     rm -rf "$TMPDIR"
@@ -981,6 +983,23 @@ install_cinnamon_transparent_panels() {
   fi
 
   rm -rf "$TMPDIR"
+
+  # Patch policies.js from Cinnamon Spices repo (workaround for newer Mint/Cinnamon)
+  EXT_DIR="$HOME/.local/share/cinnamon/extensions/transparent-panels@germanfr"
+  POL_URL="https://raw.githubusercontent.com/linuxmint/cinnamon-spices-extensions/master/transparent-panels%40germanfr/files/transparent-panels%40germanfr/policies.js"
+
+  if [[ -d "$EXT_DIR" ]]; then
+    POL_FILE="$EXT_DIR/policies.js"
+    if curl -fsSL "$POL_URL" -o "$POL_FILE"; then
+      log "Updated Transparent Panels policies.js from Cinnamon Spices repository."
+    else
+      warn "Could not update Transparent Panels policies.js (download failed); using installed version."
+    fi
+  else
+    warn "Transparent Panels extension directory not found at $EXT_DIR; cannot patch policies.js."
+  fi
+
+  log "Transparent Panels is installed. Enable it from Cinnamon's Extensions settings if desired."
 }
 
 # =============================================================================
