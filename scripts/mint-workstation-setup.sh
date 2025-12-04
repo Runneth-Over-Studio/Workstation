@@ -276,12 +276,11 @@ install_apps() {
   libreoffice_flatpak
   install_git
   install_vscode
-  install_bitwarden
   install_joplin
   install_bleachbit
   uninstall_firefox
   install_brave_browser
-  install_creative_tools_flatpaks
+  install_flatpaks
 }
 
 libreoffice_flatpak() {
@@ -334,20 +333,6 @@ install_vscode() {
   sudo apt-get install -y code
 }
 
-install_bitwarden() {
-  log "Installing Bitwarden (prefer .deb, fallback Flatpak if fetch fails)..."
-
-  if ! is_pkg_installed bitwarden; then
-    TMP_DEB=$(mktemp --suffix=.deb)
-    if curl -fsSL -o "$TMP_DEB" "https://vault.bitwarden.com/download/?app=desktop&platform=linux&variant=deb"; then
-      sudo dpkg -i "$TMP_DEB" || sudo apt-get -f install -y
-      rm -f "$TMP_DEB"
-    else
-      sudo flatpak install -y flathub com.bitwarden.desktop
-    fi
-  fi
-}
-
 install_joplin() {
   log "Installing Joplin via official install/update script (no Flatpak)..."
 
@@ -367,9 +352,10 @@ install_bleachbit() {
   sudo apt-get install -y bleachbit
 }
 
-install_creative_tools_flatpaks() {
+install_flatpaks() {
   log "Installing creative tools and utilities via Flatpak..."
 
+  sudo flatpak install -y flathub com.bitwarden.desktop
   sudo flatpak install -y flathub org.blender.Blender
   sudo flatpak install -y flathub org.freecadweb.FreeCAD || sudo flatpak install -y flathub org.freecad.FreeCAD
   sudo flatpak install -y flathub org.inkscape.Inkscape
