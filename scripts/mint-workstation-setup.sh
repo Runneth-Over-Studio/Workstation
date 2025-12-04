@@ -807,8 +807,7 @@ cook_rice() {
   tweak_file_management_prefs
   tweak_behavior_prefs
   install_neofetch
-  # install_cinnamon_gtile
-  # install_cinnamon_transparent_panels
+  install_cinnamon_extensions
 }
 
 set_mint_theme() {
@@ -957,88 +956,32 @@ tweak_behavior_prefs() {
   #TODO: 2) Open menu on hover.
 }
 
-install_cinnamon_gtile() {
+install_cinnamon_extensions() {
   # Only for Cinnamon sessions
   if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
-    warn "Cinnamon desktop not detected; skipping gTile (Cinnamon)."
+    warn "Cinnamon desktop not detected; skipping Cinnamon spices."
     return 0
   fi
 
-  log "Installing gTile (Cinnamon Spice)..."
+  log "Installing Cinnamon spices..."
+  install_cinnamon_transparent_panels
+}
 
-  local TMPDIR UUID EXT_BASE TARGET
+install_cinnamon_transparent_panels() {
+  log "Installing Transparent Panels (Cinnamon extension)..."
+
+  local TMPDIR
   TMPDIR="$(mktemp -d)"
-  UUID="gTile@shuairan"
-  EXT_BASE="$HOME/.local/share/cinnamon/extensions"
-  TARGET="$EXT_BASE/$UUID"
 
-  # We assume git is available from the App Installs step.
-  git clone --depth=1 https://github.com/shuairan/gTile "$TMPDIR/gTile" >/dev/null 2>&1 || {
-    warn "Git clone failed; aborting gTile (Cinnamon)."
+  git clone https://github.com/germanfr/cinnamon-transparent-panels.git \
+    "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1 || {
+    warn "Git clone failed; aborting Transparent Panels install."
     rm -rf "$TMPDIR"
     return 0
   }
 
-  mkdir -p "$EXT_BASE"
-  rm -rf "$TARGET"
-  cp -r "$TMPDIR/gTile" "$TARGET"
-  rm -rf "$TMPDIR"
-  log "gTile (Cinnamon) installed to $TARGET"
-
-  # Enable the extension automatically
-  if command -v gsettings >/dev/null 2>&1; then
-    log "Enabling gTile (Cinnamon) extension..."
-    local CURRENT NEW
-    CURRENT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo "[]")"
-    NEW="$(python3 - "$CURRENT" "$UUID" <<'PY'
-import ast, sys
-cur = sys.argv[1]
-uuid = sys.argv[2]
-try:
-    # Handle GVariant like "@as []"
-    if cur.startswith('@as '):
-        cur = cur.split(' ', 1)[1]
-    lst = ast.literal_eval(cur)
-except Exception:
-    lst = []
-if uuid not in lst:
-    lst.append(uuid)
-print(str(lst).replace('"', "'"))
-PY
-)"
-    gsettings set org.cinnamon enabled-extensions "$NEW" 2>/dev/null || {
-      warn "Failed to enable gTile (Cinnamon) via gsettings."
-      return 0
-    }
-    log "gTile (Cinnamon) enabled."
-    # Soft-reload Cinnamon to apply changes
-    pkill -HUP -f "cinnamon$" 2>/dev/null || true
-  else
-    warn "gsettings not found; unable to auto-enable gTile (Cinnamon)."
-  fi
-}
-
-install_cinnamon_transparent_panels() {
-  # Only for Cinnamon sessions
-  if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
-    warn "Cinnamon desktop not detected; skipping Transparent Panels."
-    return 0
-  fi
-
-  log "Installing Transparent Panels (via upstream utils.sh)..."
-  local TMPDIR UUID
-  TMPDIR="$(mktemp -d)"
-  UUID="transparent-panels@germanfr.github.com"
-
-  git clone --depth=1 https://github.com/germanfr/cinnamon-transparent-panels.git     "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1 || {
-      warn "Git clone failed; aborting Transparent Panels."
-      rm -rf "$TMPDIR"
-      return 0
-    }
-
-  # Run installer as current user
-  if ( cd "$TMPDIR/cinnamon-transparent-panels" && bash ./utils.sh install ); then
-    log "Transparent Panels installed to ~/.local/share/cinnamon/extensions/$UUID"
+  if ( cd "$TMPDIR/cinnamon-transparent-panels" && ./utils.sh install ); then
+    log "Transparent Panels installed via upstream utils.sh. You can enable it from Cinnamon's Extensions settings."
   else
     warn "Transparent Panels installer (utils.sh) failed."
     rm -rf "$TMPDIR"
@@ -1046,42 +989,6 @@ install_cinnamon_transparent_panels() {
   fi
 
   rm -rf "$TMPDIR"
-
-  # Enable the extension automatically
-  if command -v gsettings >/dev/null 2>&1; then
-    log "Enabling Transparent Panels extension..."
-
-    local CURRENT NEW
-    CURRENT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo "[]")"
-
-    # Use Python for safe list manipulation (avoids bash quoting issues)
-    NEW="$(python3 - "$CURRENT" "$UUID" <<'PY'
-import ast, sys
-cur = sys.argv[1]
-uuid = sys.argv[2]
-try:
-    if cur.startswith('@as '):
-        cur = cur.split(' ', 1)[1]
-    lst = ast.literal_eval(cur)
-except Exception:
-    lst = []
-if uuid not in lst:
-    lst.append(uuid)
-print(str(lst).replace('"', "'"))
-PY
-)"
-    if [[ -n "$NEW" ]]; then
-      gsettings set org.cinnamon enabled-extensions "$NEW" 2>/dev/null || {
-        warn "Failed to enable Transparent Panels via gsettings."
-        return 0
-      }
-      log "Transparent Panels extension enabled successfully."
-      # Reload Cinnamon to apply changes immediately (safe, no logout required)
-      pkill -HUP -f "cinnamon$" 2>/dev/null || true
-    fi
-  else
-    warn "gsettings not found; unable to auto-enable Transparent Panels."
-  fi
 }
 
 # =============================================================================
