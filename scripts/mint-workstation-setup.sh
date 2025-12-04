@@ -828,8 +828,6 @@ tweak_time_and_date_prefs() {
   else
     warn "No compatible schema for clock-use-24h found."
   fi
-
-  log "Time and date preferences updated."
 }
 
 tweak_screensaver_prefs() {
@@ -924,7 +922,11 @@ tweak_behavior_prefs() {
 install_neofetch() {
   log "Installing Neofetch..."
 
-  sudo apt-get install -y neofetch
+  # Neofetch is a nice-to-have; don't let failures kill the whole script.
+  if ! sudo apt-get install -y neofetch; then
+    warn "Neofetch installation failed (network or repo issue?). Skipping Neofetch setup."
+    return 0
+  fi
 
   log "Enabling Neofetch auto-launch for interactive shells..."
   local MARKER="neofetch auto-launch (added by mint-workstation-setup)"
