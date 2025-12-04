@@ -96,6 +96,28 @@ print_final_reboot_notice() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
+# Base URL for raw files in this repo (adjust if branch/path changes)
+REPO_RAW_BASE="https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/refs/heads/main"
+
+load_resource() {
+  local rel="$1"        # e.g. "scripts/resources/vscode-settings.json"
+  local script_dir=""
+
+  # Try to resolve the script directory (works when run from a cloned repo)
+  if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || script_dir=""
+  fi
+
+  # 1) If the resource exists next to the script (cloned repo case), use it
+  if [[ -n "$script_dir" && -f "$script_dir/$rel" ]]; then
+    cat "$script_dir/$rel"
+    return 0
+  fi
+
+  # 2) Otherwise, fetch it from GitHub (curl | bash case)
+  curl -fsSL "$REPO_RAW_BASE/$rel"
+}
+
 # ----- arg parsing -----------------------------------------------------------
 SKIP_VULKAN=false
 GPU_MODE="auto"
@@ -414,50 +436,8 @@ configure_bleachbit() {
     cp "$CFG_FILE" "$CFG_FILE.bak.$TS"
   fi
 
-  # Minimal safe preset:
-  # - Only remove generic caches/temp and thumbnails
-  # - Leave browsers and package caches untouched
-  cat > "$CFG_FILE" <<'INI'
-[bleachbit]
-# Do not overwrite; just provide sane safe defaults.
-# You can edit these later via the GUI (Preferences).
-
-# General behavior
-shred = False
-confirm = True
-delete_confirmation = True
-
-# Keep only English interface (optional; comment out to keep all)
-# preserve_languages = en
-
-# Cleaners: section names map to modules; keys map to specific items.
-# We keep this conservative.
-[system]
-cache = True
-temporary_files = True
-# recent_documents = False         ; Uncomment to also clear recent docs
-trash = True
-
-[thumbnails]
-cache = True
-
-# Browser cleaners intentionally left untouched by default:
-# Brave/Chromium-based examples you could enable later:
-# [brave]
-# cache = True
-# cookies = True
-# history = True
-#
-# [chromium]
-# cache = True
-# cookies = True
-# history = True
-
-# Package managers intentionally left untouched:
-# [apt]
-# autoclean = False
-# clean = False
-INI
+  # Minimal safe preset from resource file
+  load_resource "scripts/resources/bleachbit-defaults.ini" > "$CFG_FILE"
 
   log "BleachBit defaults written to $CFG_FILE (backup kept if one existed)."
 }
@@ -681,62 +661,43 @@ apply_vscode_settings() {
   USER_DIR="$HOME/.config/Code/User"
   mkdir -p "$USER_DIR"
 
-  NEW_SETTINGS="$(cat <<'JSON'
-{
-  "workbench.iconTheme": "material-icon-theme",
-  "editor.tabSize": 2,
-  "editor.insertSpaces": true,
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "ms-dotnettools.csharp",
-  "editor.codeActionsOnSave": { "source.organizeImports": "explicit" },
-  "files.trimTrailingWhitespace": true,
-  "files.insertFinalNewline": true,
-  "editor.bracketPairColorization.enabled": true,
-  "editor.cursorBlinking": "expand",
-  "editor.fontSize": 16,
-  "explorer.confirmDelete": false,
-  "git.confirmSync": false,
-  "git.enableSmartCommit": true,
-  "csharpOrganizeUsings.sortOrder": "",
-  "csharpOrganizeUsings.splitGroups": false,
-  "telemetry.telemetryLevel": "off",
-  "github.copilot.nextEditSuggestions.enabled": true
-}
-JSON
-)"
-  NEW_KEYS="$(cat <<'JSON'
-[
-  {
-    "key": "ctrl+alt+o",
-    "command": "csharp-organize-usings.organize",
-    "when": "editorTextFocus && editorLangId == csharp"
-  },
-  {
-    "key": "ctrl+shift+i",
-    "command": "editor.action.formatDocument",
-    "when": "editorHasDocumentFormattingProvider && editorTextFocus && !editorReadonly"
-  }
-]
-JSON
-)"
+  local NEW_SETTINGS NEW_KEYS
+  NEW_SETTINGS="$(load_resource "scripts/resources/vscode-settings.json")"
+  NEW_KEYS="$(load_resource "scripts/resources/vscode-keybindings.json")"
 
-  SETTINGS="$USER_DIR/settings.json"
-  KEYS="$USER_DIR/keybindings.json"
+  local SETTINGS="$USER_DIR/settings.json"
+  local KEYS="$USER_DIR/keybindings.json"
+  local TS
   TS=$(date +%Y%m%d-%H%M%S)
+
+  # Backups
   [[ -f "$SETTINGS" ]] && cp "$SETTINGS" "$SETTINGS.bak.$TS"
   [[ -f "$KEYS" ]] && cp "$KEYS" "$KEYS.bak.$TS"
 
-  if [[ -f "$SETTINGS" ]]; then
-    jq -s '.[0] * .[1]' "$SETTINGS" <(printf "%s" "$NEW_SETTINGS") > "$SETTINGS.merged.$TS" && mv "$SETTINGS.merged.$TS" "$SETTINGS"
+  if command -v jq >/dev/null 2>&1; then
+    # Merge settings: existing * new (new wins on conflicts)
+    if [[ -f "$SETTINGS" ]]; then
+      jq -s '.[0] * .[1]' "$SETTINGS" <(printf '%s\n' "$NEW_SETTINGS") > "$SETTINGS.tmp" \
+        && mv "$SETTINGS.tmp" "$SETTINGS"
+    else
+      printf '%s\n' "$NEW_SETTINGS" > "$SETTINGS"
+    fi
+
+    # Merge keybindings: concatenate and de-duplicate by key+command
+    if [[ -f "$KEYS" ]]; then
+      jq -s '[.[0][], .[1][]] | unique_by(.key + ":" + .command)' \
+        "$KEYS" <(printf '%s\n' "$NEW_KEYS") > "$KEYS.tmp" \
+        && mv "$KEYS.tmp" "$KEYS"
+    else
+      printf '%s\n' "$NEW_KEYS" > "$KEYS"
+    fi
   else
-    printf "%s" "$NEW_SETTINGS" > "$SETTINGS"
+    warn "jq not found; writing VS Code settings/keybindings as-is."
+    printf '%s\n' "$NEW_SETTINGS" > "$SETTINGS"
+    printf '%s\n' "$NEW_KEYS" > "$KEYS"
   fi
 
-  if [[ -f "$KEYS" ]]; then
-    jq -s '[.[0][], .[1][]] | unique_by(.key + ":" + .command)' "$KEYS" <(printf "%s" "$NEW_KEYS") > "$KEYS.merged.$TS" && mv "$KEYS.merged.$TS" "$KEYS"
-  else
-    printf "%s" "$NEW_KEYS" > "$KEYS"
-  fi
+  log "VS Code configuration updated in $USER_DIR."
 }
 
 configure_favorites() {
