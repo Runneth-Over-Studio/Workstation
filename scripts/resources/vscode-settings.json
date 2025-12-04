@@ -1,0 +1,20 @@
+{
+  "workbench.iconTheme": "material-icon-theme",
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "ms-dotnettools.csharp",
+  "editor.codeActionsOnSave": { "source.organizeImports": "explicit" },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "editor.bracketPairColorization.enabled": true,
+  "editor.cursorBlinking": "expand",
+  "editor.fontSize": 16,
+  "explorer.confirmDelete": false,
+  "git.confirmSync": false,
+  "git.enableSmartCommit": true,
+  "csharpOrganizeUsings.sortOrder": "",
+  "csharpOrganizeUsings.splitGroups": false,
+  "telemetry.telemetryLevel": "off",
+  "github.copilot.nextEditSuggestions.enabled": true
+}
