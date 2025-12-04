@@ -1017,7 +1017,9 @@ main() {
   configure_apps
 
   log "==== 6) RICE (THEMES & AESTHETICS) ===="
-  cook_rice
+  if ! cook_rice; then
+    warn "Rice step encountered an error; continuing to final updates."
+  fi
 
   final_updates
   log "✅ Setup complete!"
