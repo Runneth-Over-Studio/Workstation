@@ -956,6 +956,40 @@ tweak_behavior_prefs() {
   #TODO: 2) Open menu on hover.
 }
 
+install_neofetch() {
+  log "Installing Neofetch..."
+
+  sudo apt-get install -y neofetch
+
+  log "Enabling Neofetch auto-launch for interactive shells..."
+  local MARKER="neofetch auto-launch (added by mint-workstation-setup)"
+  NEOFETCH_SNIPPET="$(cat <<'EOF'
+# >>> neofetch auto-launch (added by mint-workstation-setup) >>>
+if command -v neofetch >/dev/null 2>&1; then
+  case "$-" in
+    *i*) neofetch ;;
+  esac
+fi
+# <<< neofetch auto-launch <<<
+EOF
+)"
+
+  # Append once to ~/.bashrc and ~/.zshrc (create file if missing)
+  for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [[ -f "$RC" ]]; then
+      if ! grep -q "$MARKER" "$RC"; then
+        printf "\n%s\n" "$NEOFETCH_SNIPPET" >> "$RC"
+        log "Added Neofetch auto-launch to $(basename "$RC")"
+      else
+        log "Neofetch auto-launch already present in $(basename "$RC")"
+      fi
+    else
+      printf "%s\n" "$NEOFETCH_SNIPPET" > "$RC"
+      log "Created $(basename "$RC") with Neofetch auto-launch"
+    fi
+  done
+}
+
 install_cinnamon_extensions() {
   # Only for Cinnamon sessions
   if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
