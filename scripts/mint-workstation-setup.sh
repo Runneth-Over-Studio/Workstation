@@ -114,8 +114,12 @@ load_resource() {
     return 0
   fi
 
-  # 2) Otherwise, fetch it from GitHub (curl | bash case)
-  curl -fsSL "$REPO_RAW_BASE/$rel"
+  # 2) Otherwise, try GitHub (curl | bash case)
+  if ! curl -fsSL "$REPO_RAW_BASE/$rel"; then
+    warn "Failed to load resource '$rel' from local path or GitHub; continuing without it."
+    # Emit empty content but do NOT fail the script
+    return 0
+  fi
 }
 
 # ----- arg parsing -----------------------------------------------------------
