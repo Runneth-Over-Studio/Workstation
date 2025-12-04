@@ -7,6 +7,9 @@ if [[ $EUID -eq 0 ]]; then
   exit 1
 fi
 
+# Base URL for raw files in this repo (adjust if branch/path changes)
+REPO_RAW_BASE="https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/refs/heads/main"
+
 # Log everything to a file as well as stdout/stderr
 exec > >(tee -a "$HOME/mint-workstation-setup.log") 2>&1
 
@@ -95,9 +98,6 @@ print_final_reboot_notice() {
   fi
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
-
-# Base URL for raw files in this repo (adjust if branch/path changes)
-REPO_RAW_BASE="https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/refs/heads/main"
 
 load_resource() {
   local rel="$1"        # e.g. "scripts/resources/vscode-settings.json"
