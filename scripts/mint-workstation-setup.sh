@@ -984,21 +984,6 @@ install_cinnamon_transparent_panels() {
 
   rm -rf "$TMPDIR"
 
-  # Patch policies.js from Cinnamon Spices repo (workaround for newer Mint/Cinnamon)
-  EXT_DIR="$HOME/.local/share/cinnamon/extensions/transparent-panels@germanfr"
-  POL_URL="https://raw.githubusercontent.com/linuxmint/cinnamon-spices-extensions/master/transparent-panels%40germanfr/files/transparent-panels%40germanfr/policies.js"
-
-  if [[ -d "$EXT_DIR" ]]; then
-    POL_FILE="$EXT_DIR/policies.js"
-    if curl -fsSL "$POL_URL" -o "$POL_FILE"; then
-      log "Updated Transparent Panels policies.js from Cinnamon Spices repository."
-    else
-      warn "Could not update Transparent Panels policies.js (download failed); using installed version."
-    fi
-  else
-    warn "Transparent Panels extension directory not found at $EXT_DIR; cannot patch policies.js."
-  fi
-
   log "Transparent Panels is installed. Enable it from Cinnamon's Extensions settings if desired."
 }
 
