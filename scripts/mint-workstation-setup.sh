@@ -696,7 +696,7 @@ configure_favorites() {
     return 0
   fi
 
-  log "Updating Cinnamon favorites (remove Files/Terminal, add Thunderbird/Joplin)..."
+  log "Updating Cinnamon favorites..."
 
   local CURRENT NEW
   CURRENT="$(gsettings get org.cinnamon favorite-apps 2>/dev/null || echo "[]")"
@@ -730,8 +730,8 @@ def ensure(lst, item):
     if item not in lst:
         lst.append(item)
 
-# Ensure Thunderbird
-ensure(fav, "thunderbird.desktop")
+# Ensure VS Code (Microsoft .deb uses code.desktop)
+ensure(fav, "code.desktop")
 
 # Joplin can have different .desktop IDs depending on how it's installed
 joplin_candidates = [
