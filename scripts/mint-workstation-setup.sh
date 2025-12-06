@@ -754,6 +754,7 @@ PY
 #  6) "RICE" – THEMES & AESTHETICS
 # =============================================================================
 cook_rice() {
+  set_wallpaper
   set_mint_theme
   set_icon_theme
   set_fonts
@@ -763,6 +764,46 @@ cook_rice() {
   tweak_behavior_prefs
   install_neofetch
   install_cinnamon_extensions
+}
+
+set_wallpaper() {
+  log "Setting custom wallpaper..."
+
+  local PICS_DIR="$HOME/Pictures"
+  local WALL_DIR="$PICS_DIR/Wallpapers"
+  local WALL_NAME="Gnome-Desktop-851-Right-4K-No-Logo.jpg"
+  local WALL_PATH="$WALL_DIR/$WALL_NAME"
+  local WALL_URL="https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/refs/heads/main/content/wallpapers/Gnome-Desktop-851-Right-4K-No-Logo.jpg"
+
+  mkdir -p "$WALL_DIR"
+
+  if [[ ! -f "$WALL_PATH" ]]; then
+    if curl -fsSL "$WALL_URL" -o "$WALL_PATH"; then
+      log "Downloaded wallpaper to $WALL_PATH"
+    else
+      warn "Failed to download wallpaper from $WALL_URL"
+      return 0
+    fi
+  else
+    log "Wallpaper already exists at $WALL_PATH"
+  fi
+
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not available; cannot apply wallpaper settings."
+    return 0
+  fi
+
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.background'; then
+    local URI="file://$WALL_PATH"
+    gsettings set org.cinnamon.desktop.background picture-uri "$URI" 2>/dev/null || \
+      warn "Could not set desktop background image."
+
+    # Set Picture Aspect to 'stretched'
+    gsettings set org.cinnamon.desktop.background picture-options 'stretched' 2>/dev/null || \
+      warn "Could not set picture aspect to stretched."
+  else
+    warn "org.cinnamon.desktop.background schema not found; skipping wallpaper configuration."
+  fi
 }
 
 set_mint_theme() {
@@ -800,9 +841,74 @@ set_icon_theme() {
 }
 
 set_fonts() {
-  log "Installing developer-friendly fonts (Fira Code, JetBrains Mono)..."
+  log "Installing and applying Inter + JetBrains Mono fonts..."
 
-  sudo apt-get install -y fonts-firacode fonts-jetbrains-mono
+  local FONTS_DIR="$HOME/.fonts"
+  local TMPDIR
+  TMPDIR="$(mktemp -d)"
+
+  mkdir -p "$FONTS_DIR"
+
+  # Download Inter and JetBrains Mono from Google Fonts
+  local INTER_ZIP="$TMPDIR/inter.zip"
+  local JB_ZIP="$TMPDIR/jetbrains-mono.zip"
+
+  if ! curl -fsSL "https://fonts.google.com/download?family=Inter" -o "$INTER_ZIP"; then
+    warn "Failed to download Inter font zip."
+  fi
+
+  if ! curl -fsSL "https://fonts.google.com/download?family=JetBrains+Mono" -o "$JB_ZIP"; then
+    warn "Failed to download JetBrains Mono font zip."
+  fi
+
+  # Extract and copy TTFs into ~/.fonts
+  if [[ -f "$INTER_ZIP" ]]; then
+    mkdir -p "$TMPDIR/inter"
+    if unzip -qq "$INTER_ZIP" -d "$TMPDIR/inter"; then
+      find "$TMPDIR/inter" -type f -name '*.ttf' -exec cp -n {} "$FONTS_DIR/" \;
+      log "Copied Inter TTF files into $FONTS_DIR"
+    else
+      warn "Failed to unzip Inter font archive."
+    fi
+  fi
+
+  if [[ -f "$JB_ZIP" ]]; then
+    mkdir -p "$TMPDIR/jetbrains"
+    if unzip -qq "$JB_ZIP" -d "$TMPDIR/jetbrains"; then
+      find "$TMPDIR/jetbrains" -type f -name '*.ttf' -exec cp -n {} "$FONTS_DIR/" \;
+      log "Copied JetBrains Mono TTF files into $FONTS_DIR"
+    else
+      warn "Failed to unzip JetBrains Mono font archive."
+    fi
+  fi
+
+  # Refresh font cache (non-fatal if fc-cache is missing)
+  if command -v fc-cache >/dev/null 2>&1; then
+    fc-cache -f "$FONTS_DIR" || true
+  fi
+
+  rm -rf "$TMPDIR"
+
+  # Apply fonts via gsettings (Cinnamon)
+  if command -v gsettings >/dev/null 2>&1; then
+    if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
+      # Default + Desktop font
+      gsettings set org.cinnamon.desktop.interface font-name 'Inter Regular 10' 2>/dev/null || \
+        warn "Could not set default font to Inter Regular."
+
+      # Monospace font
+      gsettings set org.cinnamon.desktop.interface monospace-font-name 'JetBrains Mono Regular 10' 2>/dev/null || \
+        warn "Could not set monospace font to JetBrains Mono Regular."
+    fi
+
+    if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.wm.preferences'; then
+      # Window title font
+      gsettings set org.cinnamon.desktop.wm.preferences titlebar-font 'Inter Medium 10' 2>/dev/null || \
+        warn "Could not set titlebar font to Inter Medium."
+    fi
+  else
+    warn "gsettings not found; skipping font configuration in Cinnamon."
+  fi
 }
 
 tweak_time_and_date_prefs() {
@@ -951,55 +1057,127 @@ EOF
 install_cinnamon_extensions() {
   # Only for Cinnamon sessions
   if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
-    warn "Cinnamon desktop not detected; skipping Cinnamon spices."
+    warn "Cinnamon desktop not detected; skipping Cinnamon extensions/actions."
     return 0
   fi
 
-  log "Installing Cinnamon spices..."
-  install_cinnamon_transparent_panels
+  log "Installing Cinnamon extensions and actions..."
+  install_blur_cinnamon_extension
+  install_gtile_extension
+  install_vscode_launcher_action
 }
 
-install_cinnamon_transparent_panels() {
-  log "Installing Transparent Panels (via upstream utils.sh)..."
+install_blur_cinnamon_extension() {
+  log "Installing Blur Cinnamon extension..."
 
-  local TMPDIR EXT_DIR POL_URL POL_FILE
+  local EXT_DIR="$HOME/.local/share/cinnamon/extensions"
+  local TMPDIR
   TMPDIR="$(mktemp -d)"
 
-  # Clone upstream repo
-  if ! git clone --depth=1 https://github.com/germanfr/cinnamon-transparent-panels.git \
-    "$TMPDIR/cinnamon-transparent-panels" >/dev/null 2>&1; then
-    warn "Git clone failed; aborting Transparent Panels install."
+  mkdir -p "$EXT_DIR"
+
+  if [[ -d "$EXT_DIR/BlurCinnamon@klangman" ]]; then
+    log "Blur Cinnamon already present at $EXT_DIR/BlurCinnamon@klangman"
     rm -rf "$TMPDIR"
     return 0
   fi
 
-  # Run installer as current user
-  if ( cd "$TMPDIR/cinnamon-transparent-panels" && ./utils.sh install ); then
-    log "Transparent Panels installed via upstream utils.sh."
-  else
-    warn "Transparent Panels installer (utils.sh) failed."
+  if ! git clone --depth=1 https://github.com/klangman/BlurCinnamon.git \
+    "$TMPDIR/BlurCinnamon" >/dev/null 2>&1; then
+    warn "Failed to clone BlurCinnamon repo; skipping Blur Cinnamon install."
     rm -rf "$TMPDIR"
     return 0
+  fi
+
+  if [[ -d "$TMPDIR/BlurCinnamon/BlurCinnamon@klangman" ]]; then
+    cp -a "$TMPDIR/BlurCinnamon/BlurCinnamon@klangman" "$EXT_DIR/"
+    log "Blur Cinnamon installed into $EXT_DIR/BlurCinnamon@klangman"
+  else
+    warn "BlurCinnamon@klangman directory not found in cloned repo; skipping."
   fi
 
   rm -rf "$TMPDIR"
+}
 
-  # Patch policies.js from Cinnamon Spices repo (workaround for newer Mint/Cinnamon)
-  EXT_DIR="$HOME/.local/share/cinnamon/extensions/transparent-panels@germanfr"
-  POL_URL="https://raw.githubusercontent.com/linuxmint/cinnamon-spices-extensions/master/transparent-panels%40germanfr/files/transparent-panels%40germanfr/policies.js"
+install_gtile_extension() {
+  log "Installing gTile extension..."
 
-  if [[ -d "$EXT_DIR" ]]; then
-    POL_FILE="$EXT_DIR/policies.js"
-    if curl -fsSL "$POL_URL" -o "$POL_FILE"; then
-      log "Updated Transparent Panels policies.js from Cinnamon Spices repository."
-    else
-      warn "Could not update Transparent Panels policies.js (download failed); using installed version."
-    fi
-  else
-    warn "Transparent Panels extension directory not found at $EXT_DIR; cannot patch policies.js."
+  local EXT_DIR="$HOME/.local/share/cinnamon/extensions"
+  local TMPDIR
+  TMPDIR="$(mktemp -d)"
+
+  mkdir -p "$EXT_DIR"
+
+  if [[ -d "$EXT_DIR/gTile@shuairan" ]]; then
+    log "gTile already present at $EXT_DIR/gTile@shuairan"
+    rm -rf "$TMPDIR"
+    return 0
   fi
-  
-  log "Transparent Panels is installed. Enable it from Cinnamon's Extensions settings if desired."
+
+  if ! git clone --depth=1 https://github.com/shuairan/gTile.git \
+    "$TMPDIR/gTile" >/dev/null 2>&1; then
+    warn "Failed to clone gTile repo; skipping gTile install."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  # As per upstream instructions: mv gTile -> ~/.local/share/cinnamon/extensions/gTile@shuairan
+  if [[ -d "$TMPDIR/gTile" ]]; then
+    mv "$TMPDIR/gTile" "$EXT_DIR/gTile@shuairan"
+    log "gTile installed into $EXT_DIR/gTile@shuairan"
+  else
+    warn "gTile directory not found after clone; skipping."
+  fi
+
+  rm -rf "$TMPDIR"
+}
+
+install_vscode_launcher_action() {
+  log "Installing VSCode Launcher Nemo action..."
+
+  local ACTIONS_DIR="$HOME/.local/share/nemo/actions"
+  local TMPDIR
+  TMPDIR="$(mktemp -d)"
+
+  mkdir -p "$ACTIONS_DIR"
+
+  # If an action file already exists, don't reinstall
+  if ls "$ACTIONS_DIR"/vscode-launcher*.nemo_action >/dev/null 2>&1; then
+    log "VSCode Launcher Nemo action already present in $ACTIONS_DIR"
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  local ZIP_URL="https://cinnamon-spices.linuxmint.com/files/actions/vscode-launcher%40vajdao.zip"
+  local ZIP_FILE="$TMPDIR/vscode-launcher.zip"
+
+  if ! curl -fsSL "$ZIP_URL" -o "$ZIP_FILE"; then
+    warn "Failed to download VSCode Launcher action zip; skipping."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  mkdir -p "$TMPDIR/unpacked"
+  if ! unzip -qq "$ZIP_FILE" -d "$TMPDIR/unpacked"; then
+    warn "Failed to unzip VSCode Launcher action; skipping."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  # Copy any .nemo_action files into the actions directory
+  local found=false
+  while IFS= read -r -d '' f; do
+    cp "$f" "$ACTIONS_DIR/"
+    found=true
+  done < <(find "$TMPDIR/unpacked" -maxdepth 2 -type f -name '*.nemo_action' -print0)
+
+  if [[ "$found" == true ]]; then
+    log "Installed VSCode Launcher Nemo action into $ACTIONS_DIR"
+  else
+    warn "No .nemo_action files found in VSCode Launcher zip; nothing installed."
+  fi
+
+  rm -rf "$TMPDIR"
 }
 
 # =============================================================================
