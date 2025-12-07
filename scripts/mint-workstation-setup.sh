@@ -538,8 +538,11 @@ if launcher_list is None:
     else:
         launcher_list = []
 
-# Normalize to strings only
-launcher_list = [x for x in launcher_list if isinstance(x, str)]
+# Normalize to strings only and drop any Firefox entries
+launcher_list = [
+    x for x in launcher_list
+    if isinstance(x, str) and "firefox" not in x.lower()
+]
 
 def ensure(item, after=None):
     if item in launcher_list:
@@ -696,7 +699,7 @@ configure_favorites() {
     return 0
   fi
 
-  log "Updating Cinnamon favorites..."
+  log "Updating Cinnamon favorites (remove Files/Terminal, add VS Code/Joplin)…"
 
   local CURRENT NEW
   CURRENT="$(gsettings get org.cinnamon favorite-apps 2>/dev/null || echo "[]")"
@@ -706,7 +709,6 @@ import ast, sys
 
 cur = sys.argv[1]
 
-# Parse current favorites list
 try:
     fav = ast.literal_eval(cur)
 except Exception:
@@ -715,13 +717,17 @@ except Exception:
 if not isinstance(fav, list):
     fav = []
 
-# Entries we want to remove from favorites (already pinned to panel)
+# Entries we want to remove from favorites (already pinned to panel or not desired)
 to_remove = {
     "nemo.desktop",
     "org.gnome.Terminal.desktop",
     "gnome-terminal.desktop",
     "org.xfce.terminal.desktop",
     "xterm.desktop",
+    # We will reinsert VS Code and Joplin in a specific order, so strip them first
+    "code.desktop",
+    "appimagekit-joplin.desktop",
+    "joplin.desktop",
 }
 
 fav = [item for item in fav if item not in to_remove]
@@ -730,18 +736,19 @@ def ensure(lst, item):
     if item not in lst:
         lst.append(item)
 
-# Ensure VS Code (Microsoft .deb uses code.desktop)
+# 1) VS Code first
 ensure(fav, "code.desktop")
 
-# Joplin can have different .desktop IDs depending on how it's installed
+# 2) Then Joplin
 joplin_candidates = [
     "appimagekit-joplin.desktop",  # common from official Joplin script
     "joplin.desktop",
 ]
 
-# If none of the candidates are present, add the first candidate
-if not any(c in fav for c in joplin_candidates):
-    ensure(fav, joplin_candidates[0])
+# Prefer whichever candidate is already present (if any), otherwise use first
+existing = next((c for c in joplin_candidates if c in fav), None)
+joplin_id = existing if existing is not None else joplin_candidates[0]
+ensure(fav, joplin_id)
 
 print(str(fav).replace('"', "'"))
 PY
@@ -749,6 +756,7 @@ PY
 
   gsettings set org.cinnamon favorite-apps "$NEW" 2>/dev/null || true
 }
+
 
 # =============================================================================
 #  6) "RICE" – THEMES & AESTHETICS
