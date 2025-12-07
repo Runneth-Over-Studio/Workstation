@@ -662,7 +662,7 @@ cook_rice() {
   tweak_file_management_prefs
   tweak_behavior_prefs
   install_neofetch
-  install_cinnamon_extensions
+  #install_cinnamon_extensions
 
   refresh_cinnamon_shell
 }
