@@ -934,71 +934,138 @@ set_terminal_theme() {
     return 0
   fi
 
-  # 1) Install dconf deps needed by Gogh
-  sudo apt-get install -y dconf-cli uuid-runtime >/dev/null 2>&1 || true
+  #
+  # 1) Pre-reqs for Gogh (dconf, uuid, and gconf2 to avoid default_profile errors)
+  #
+  sudo apt-get update -y >/dev/null 2>&1 || true
+  sudo apt-get install -y dconf-cli uuid-runtime gconf2 >/dev/null 2>&1 || true
 
-  # 2) Run Gogh's Catppuccin Frappe installer (non-interactively)
-  local TMPDIR BASE_URL
-  TMPDIR="$(mktemp -d)" || {
-    warn "Could not create temp directory for Gogh; skipping terminal theme."
+  # Optional but helps with the "default_profile not a valid identifier" issue
+  dconf reset -f /org/gnome/terminal/legacy/profiles:/ >/dev/null 2>&1 || true
+
+  #
+  # 2) Clone (or reuse) Gogh repo
+  #
+  local GOGH_DIR="$HOME/.local/share/gogh"
+  mkdir -p "$(dirname "$GOGH_DIR")"
+
+  if [[ ! -d "$GOGH_DIR/.git" ]]; then
+    log " • Cloning Gogh into $GOGH_DIR…"
+    rm -rf "$GOGH_DIR"
+    if ! git clone --depth=1 https://github.com/Gogh-Co/Gogh.git "$GOGH_DIR" >/dev/null 2>&1; then
+      warn "Could not clone Gogh; skipping terminal theme."
+      return 0
+    fi
+  else
+    log " • Reusing existing Gogh clone at $GOGH_DIR."
+  fi
+
+  pushd "$GOGH_DIR" >/dev/null 2>&1 || {
+    warn "Could not enter Gogh directory; skipping terminal theme."
     return 0
   }
-  BASE_URL="https://raw.githubusercontent.com/Gogh-Co/Gogh/master"
 
-  if ! curl -fsSL "$BASE_URL/apply-colors.sh" -o "$TMPDIR/apply-colors.sh"; then
-    warn "Failed to download Gogh apply-colors.sh; skipping terminal color scheme."
-    rm -rf "$TMPDIR"
-    return 0
+  #
+  # 3) Non-interactive install of Catppuccin Frappe
+  #    We look for a theme script whose name includes both "catppuccin" and "frappe".
+  #
+  export TERMINAL=gnome-terminal
+  export GOGH_NONINTERACTIVE=1
+
+  local THEME_SCRIPT
+  THEME_SCRIPT="$(find installs -maxdepth 1 -type f -iname '*catppuccin*frappe*.sh' | head -n1)"
+
+  if [[ -z "$THEME_SCRIPT" ]]; then
+    warn "Could not locate Catppuccin Frappe theme script in Gogh; skipping Gogh theme apply."
+  else
+    log " • Applying Gogh theme via: $THEME_SCRIPT"
+    bash "$THEME_SCRIPT" </dev/null >/dev/null 2>&1 || \
+      warn "Gogh theme script returned an error; colors may not have been applied."
   fi
 
-  if ! curl -fsSL "$BASE_URL/installs/catppuccin-frappe.sh" -o "$TMPDIR/catppuccin-frappe.sh"; then
-    warn "Failed to download Gogh Catppuccin Frappe installer; skipping terminal color scheme."
-    rm -rf "$TMPDIR"
-    return 0
-  fi
+  popd >/dev/null 2>&1 || true
 
-  chmod +x "$TMPDIR"/apply-colors.sh "$TMPDIR"/catppuccin-frappe.sh
-
-  (
-    cd "$TMPDIR" || exit 0
-    TERMINAL=gnome-terminal bash ./catppuccin-frappe.sh
-  ) || warn "Gogh Catppuccin Frappe install script failed; colors may not have applied correctly."
-
-  rm -rf "$TMPDIR"
-
-  # 3) Set JetBrains Mono 11 on the *default* profile (or first profile if default is unset)
+  #
+  # 4) Find the Catppuccin profile that Gogh created and set it as default + JetBrains Mono
+  #
   if ! command -v dconf >/dev/null 2>&1; then
     warn "dconf not available; cannot tweak terminal profile font."
     return 0
   fi
 
-  local def prof_id prof_path
+  local profiles profile_id profile_path visible_name
+  profiles="$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null || true)"
 
-  # Try to read default profile ID
-  def="$(dconf read /org/gnome/terminal/legacy/profiles:/default 2>/dev/null | tr -d "'")"
-
-  # If default is empty, pick the first listed profile and set it as default
-  if [[ -z "$def" ]]; then
-    prof_id="$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null | head -n1 | tr -d '/:')"
-    if [[ -n "$prof_id" ]]; then
-      def="$prof_id"
-      dconf write /org/gnome/terminal/legacy/profiles:/default "'$def'" 2>/dev/null || true
-      log " • GNOME Terminal default profile set to $def."
-    fi
+  # If no profiles yet (very fresh system), open a terminal once to force creation
+  if [[ -z "$profiles" ]]; then
+    gnome-terminal -- bash -lc 'exit' >/dev/null 2>&1 &
+    sleep 2
+    profiles="$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null || true)"
   fi
 
-  if [[ -z "$def" ]]; then
-    warn "Could not determine a GNOME Terminal profile; skipped font tweak."
+  local catppuccin_id=""
+  catppuccin_id="$(
+    python3 - <<'PY'
+import subprocess, unicodedata
+
+def dconf_read(path):
+    try:
+        out = subprocess.check_output(["dconf", "read", path], text=True).strip()
+        return out.strip("'") if out else ""
+    except Exception:
+        return ""
+
+# List profiles (each line looks like ':<uuid>/')
+try:
+    profiles_out = subprocess.check_output(
+        ["dconf", "list", "/org/gnome/terminal/legacy/profiles:/"],
+        text=True
+    )
+except Exception:
+    profiles_out = ""
+
+profiles = [p.strip("/:\n") for p in profiles_out.splitlines() if p.strip()]
+
+catppuccin_id = ""
+
+for pid in profiles:
+    name = dconf_read(f"/org/gnome/terminal/legacy/profiles:/:{pid}/visible-name")
+    if not name:
+        continue
+    # Normalize accents so 'Frappé' / 'Frappe' behave the same
+    norm = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii").lower()
+    if "catppuccin" in norm:
+        catppuccin_id = pid
+        break
+
+# Fallback: use default or first profile if no Catppuccin by name
+if not catppuccin_id:
+    default = dconf_read("/org/gnome/terminal/legacy/profiles:/default")
+    if default:
+        catppuccin_id = default
+    elif profiles:
+        catppuccin_id = profiles[0]
+
+print(catppuccin_id)
+PY
+  )"
+
+  if [[ -z "$catppuccin_id" ]]; then
+    warn "Could not determine any GNOME Terminal profile; skipping font tweak."
     return 0
   fi
 
-  prof_path="/org/gnome/terminal/legacy/profiles:/:$def/"
+  profile_path="/org/gnome/terminal/legacy/profiles:/:$catppuccin_id/"
 
-  dconf write "${prof_path}use-system-font" "false" 2>/dev/null || true
-  dconf write "${prof_path}font" "'JetBrains Mono 11'" 2>/dev/null || \
-    warn "Could not set JetBrains Mono font on terminal profile $def."
+  # Make that profile the default
+  dconf write /org/gnome/terminal/legacy/profiles:/default "'$catppuccin_id'" 2>/dev/null || true
 
-  log " • Terminal profile $def font → JetBrains Mono 11 (system font disabled)."
+  # Apply JetBrains Mono 11 as the font
+  dconf write "${profile_path}use-system-font" "false" 2>/dev/null || true
+  dconf write "${profile_path}font" "'JetBrains Mono 11'" 2>/dev/null || \
+    warn "Could not set JetBrains Mono font on terminal profile $catppuccin_id."
+
+  log " • Terminal profile $catppuccin_id → Catppuccin (if Gogh succeeded) + JetBrains Mono 11."
 }
 
 set_text_editor_theme() {
