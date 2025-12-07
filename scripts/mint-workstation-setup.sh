@@ -860,7 +860,7 @@ set_themes() {
   log "Applying themes…"
 
   set_system_theme
-  set_terminal_theme
+  install_gogh_theme
   set_text_editor_theme
 }
 
@@ -924,6 +924,77 @@ set_system_theme() {
 
   gsettings set org.cinnamon.theme name "$THEME_NAME" 2>/dev/null || \
     warn "Could not set Cinnamon theme name to $THEME_NAME."
+}
+
+install_gogh_theme() {
+  log "Installing Gogh (Catppuccin Frappé)…"
+
+  #
+  # 1. Pre-install requirements
+  #
+  sudo apt-get update -y >/dev/null 2>&1 || true
+  sudo apt-get install -y dconf-cli uuid-runtime >/dev/null 2>&1 || {
+    warn "Failed to install Gogh dependencies (dconf-cli, uuid-runtime)."
+    return 0
+  }
+
+  log " • Resetting GNOME Terminal profiles (fresh state)…"
+  dconf reset -f /org/gnome/terminal/legacy/profiles:/ >/dev/null 2>&1 || true
+
+  #
+  # 2. Use a temp directory rather than ~/src
+  #
+  local TMPDIR
+  TMPDIR="$(mktemp -d)"
+  if [[ ! -d "$TMPDIR" ]]; then
+    warn "Could not create temporary directory for Gogh installation."
+    return 0
+  fi
+
+  log " • Cloning Gogh into temporary directory: $TMPDIR/gogh"
+  if ! git clone --depth=1 https://github.com/Gogh-Co/Gogh.git "$TMPDIR/gogh" >/dev/null 2>&1; then
+    warn "Failed to clone the Gogh repository."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  cd "$TMPDIR/gogh" || {
+    warn "Could not enter Gogh directory."
+    rm -rf "$TMPDIR"
+    return 0
+  }
+
+  #
+  # 3. Non-interactive install of Catppuccin Frappé
+  #
+  export TERMINAL=gnome-terminal
+  export GOGH_NONINTERACTIVE=1
+
+  # Look for the Catppuccin Frappé script (name can vary slightly over time)
+  local THEME_SCRIPT
+  THEME_SCRIPT="$(find "$TMPDIR/gogh/installs" -maxdepth 1 -type f -iname '*catppuccin*frappe*.sh' | head -n1)"
+
+  if [[ -z "$THEME_SCRIPT" ]]; then
+    warn "Could not find Catppuccin Frappé install script in Gogh."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  log " • Running Gogh theme installer: $(basename "$THEME_SCRIPT")"
+  bash "$THEME_SCRIPT" </dev/null >/dev/null 2>&1
+  local exitcode=$?
+
+  if [[ $exitcode -ne 0 ]]; then
+    warn "Gogh theme script exited with status $exitcode — theme may not have been applied."
+  else
+    log " • Gogh Catppuccin Frappé installation completed."
+  fi
+
+  #
+  # 4. Cleanup
+  #
+  rm -rf "$TMPDIR"
+  log " • Cleaned up temporary Gogh directory."
 }
 
 set_terminal_theme() {
