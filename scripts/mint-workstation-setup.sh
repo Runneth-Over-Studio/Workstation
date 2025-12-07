@@ -755,9 +755,9 @@ PY
 # =============================================================================
 cook_rice() {
   set_wallpaper
-  set_mint_theme
   set_icon_theme
   set_fonts
+  set_themes
   tweak_time_and_date_prefs
   tweak_screensaver_prefs
   tweak_file_management_prefs
@@ -908,6 +908,168 @@ set_fonts() {
     fi
   else
     warn "gsettings not found; skipping font configuration in Cinnamon."
+  fi
+}
+
+set_themes() {
+  log "Applying themes…"
+
+  set_system_theme
+  set_terminal_theme
+  set_text_editor_theme
+}
+
+set_system_theme() {
+  log "Configuring system theme (Catppuccin Frappe Standard Blue Dark)…"
+
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; skipping system theme configuration."
+    return 0
+  fi
+
+  local THEME_NAME="Catppuccin-Frappe-Standard-Blue-Dark"
+  # Using the official Catppuccin GTK release asset
+  local THEME_URL="https://github.com/catppuccin/gtk/releases/download/v1.0.3/${THEME_NAME}.zip"
+  local THEMES_DIR="$HOME/.themes"
+
+  mkdir -p "$THEMES_DIR"
+
+  local TMPDIR
+  TMPDIR="$(mktemp -d)" || {
+    warn "Could not create temp directory for GTK theme; skipping."
+    return 0
+  }
+
+  if ! curl -fsSL "$THEME_URL" -o "$TMPDIR/theme.zip"; then
+    warn "Failed to download Catppuccin GTK theme from $THEME_URL; skipping."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  if ! unzip -q "$TMPDIR/theme.zip" -d "$TMPDIR"; then
+    warn "Failed to unzip Catppuccin GTK theme; skipping."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  # Prefer a folder matching THEME_NAME; if not found, copy all subdirectories
+  if ls "$TMPDIR" | grep -qx "$THEME_NAME"; then
+    cp -r "$TMPDIR/$THEME_NAME" "$THEMES_DIR/" 2>/dev/null || \
+      warn "Could not copy $THEME_NAME into $THEMES_DIR."
+  else
+    cp -r "$TMPDIR"/*/ "$THEMES_DIR/" 2>/dev/null || \
+      warn "Could not copy extracted GTK themes into $THEMES_DIR."
+  fi
+
+  rm -rf "$TMPDIR"
+
+  # Apply to Cinnamon + GTK
+  gsettings set org.cinnamon.desktop.interface gtk-theme "$THEME_NAME" 2>/dev/null || \
+    warn "Could not set GTK theme to $THEME_NAME."
+  gsettings set org.cinnamon.theme name "$THEME_NAME" 2>/dev/null || \
+    warn "Could not set Cinnamon theme to $THEME_NAME."
+}
+
+set_terminal_theme() {
+  log "Configuring terminal theme…"
+
+  if ! command -v gnome-terminal >/dev/null 2>&1; then
+    warn "gnome-terminal not found; skipping terminal theme configuration."
+    return 0
+  fi
+
+  # Needed by Gogh for gnome-terminal profiles
+  sudo apt-get install -y dconf-cli uuid-runtime || true
+
+  local TMPDIR
+  TMPDIR="$(mktemp -d)" || {
+    warn "Could not create temp directory for Gogh; skipping terminal theme."
+    return 0
+  }
+
+  local BASE_URL="https://raw.githubusercontent.com/Gogh-Co/Gogh/master"
+
+  # Download apply-colors helper and the Catppuccin Frappe installer script
+  if ! curl -fsSL "$BASE_URL/apply-colors.sh" -o "$TMPDIR/apply-colors.sh"; then
+    warn "Failed to download Gogh apply-colors.sh; skipping terminal theme."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  if ! curl -fsSL "$BASE_URL/installs/catppuccin-frappe.sh" -o "$TMPDIR/catppuccin-frappe.sh"; then
+    warn "Failed to download Gogh Catppuccin Frappe installer; skipping terminal theme."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  chmod +x "$TMPDIR"/apply-colors.sh "$TMPDIR"/catppuccin-frappe.sh
+
+  # Run the theme installer in the directory where apply-colors.sh lives
+  (
+    cd "$TMPDIR" || exit 0
+    TERMINAL=gnome-terminal bash ./catppuccin-frappe.sh
+  ) || warn "Gogh Catppuccin Frappe install script failed; theme might not be applied."
+
+  # Try to find the new profile and set it as default + set JetBrains Mono 11
+  if command -v dconf >/dev/null 2>&1; then
+    local PROFILE_IDS PROFILE_ID
+    PROFILE_IDS=$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null | tr -d '/') || true
+
+    for id in $PROFILE_IDS; do
+      local NAME
+      NAME=$(dconf read "/org/gnome/terminal/legacy/profiles:/:$id/visible-name" 2>/dev/null | tr -d "'") || true
+      if [[ "$NAME" == "Catppuccin Frappe" ]]; then
+        PROFILE_ID="$id"
+        break
+      fi
+    done
+
+    if [[ -n "${PROFILE_ID:-}" ]]; then
+      # Make this profile the default
+      dconf write /org/gnome/terminal/legacy/profiles:/default "'$PROFILE_ID'" 2>/dev/null || \
+        warn "Could not set Catppuccin Frappe as the default terminal profile."
+
+      # Disable system font and set JetBrains Mono Regular 11
+      dconf write "/org/gnome/terminal/legacy/profiles:/:$PROFILE_ID/use-system-font" "false" 2>/dev/null || true
+      dconf write "/org/gnome/terminal/legacy/profiles:/:$PROFILE_ID/font" "'JetBrains Mono Regular 11'" 2>/dev/null || \
+        warn "Could not set JetBrains Mono font in gnome-terminal."
+    else
+      warn "Could not locate a 'Catppuccin Frappe' terminal profile; leaving the default profile unchanged."
+    fi
+  else
+    warn "dconf not available; cannot set default terminal profile."
+  fi
+
+  rm -rf "$TMPDIR"
+}
+
+set_text_editor_theme() {
+  log "Configuring Xed theme (Catppuccin Frappe)…"
+
+  local XED_STYLE_DIR="$HOME/.local/share/xed/styles"
+  local STYLE_URL="https://raw.githubusercontent.com/catppuccin/xed/refs/heads/main/src/frappe.xml"
+  local STYLE_PATH="$XED_STYLE_DIR/frappe.xml"
+
+  mkdir -p "$XED_STYLE_DIR"
+
+  if ! curl -fsSL "$STYLE_URL" -o "$STYLE_PATH"; then
+    warn "Failed to download Catppuccin Frappe theme for Xed; skipping."
+    return 0
+  fi
+
+  # Try to set it as the active scheme if the schema exists
+  if gsettings list-schemas | grep -qx 'org.x.editor.preferences.editor'; then
+    local SCHEME_ID
+    SCHEME_ID=$(grep -o 'id=\"[^\"]*\"' "$STYLE_PATH" | head -n1 | sed 's/id=\"//;s/\"//') || true
+
+    if [[ -n "$SCHEME_ID" ]]; then
+      gsettings set org.x.editor.preferences.editor scheme "$SCHEME_ID" 2>/dev/null || \
+        warn "Downloaded Xed theme but could not set scheme '$SCHEME_ID'."
+    else
+      warn "Could not infer Xed scheme id from frappe.xml; theme installed but not activated."
+    fi
+  else
+    warn "Xed gsettings schema not found; Catppuccin theme installed but not auto-activated."
   fi
 }
 
