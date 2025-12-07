@@ -1266,6 +1266,23 @@ PY
     warn " • Could not configure hot corner layout (org.cinnamon::hotcorner-layout not available)."
   fi
 
+  # 4) Alt-Tab switcher style → Timeline (3D)
+  if command -v gsettings >/dev/null 2>&1 && \
+     gsettings list-schemas | grep -qx 'org.cinnamon.desktop.wm.preferences'; then
+
+    if gsettings list-keys org.cinnamon.desktop.wm.preferences | grep -qx 'switcher-style'; then
+      if gsettings set org.cinnamon.desktop.wm.preferences switcher-style 'timeline' 2>/dev/null; then
+        log " • Alt-Tab switcher style → Timeline (3D)"
+      else
+        warn " • Failed to set Alt-Tab switcher style."
+      fi
+    else
+      warn " • switcher-style key not found in org.cinnamon.desktop.wm.preferences; skipping Alt-Tab tweak."
+    fi
+  else
+    warn " • org.cinnamon.desktop.wm.preferences schema not available; cannot tweak Alt-Tab behavior."
+  fi
+
   # TODO: Open menu on hover.
 }
 
