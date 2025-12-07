@@ -452,170 +452,47 @@ set_brave_default_browser() {
 }
 
 pin_brave_to_panel_cinnamon() {
-  # Only for Cinnamon sessions; best-effort edit of panel-launchers applet config.
-  if [[ "$XDG_CURRENT_DESKTOP" != *"Cinnamon"* && "$XDG_CURRENT_DESKTOP" != *"X-Cinnamon"* ]]; then
-    warn "Cinnamon not detected; skipping Brave pin to panel."
-    add_brave_to_favorites
-    return 0
-  fi
+  log "Configuring grouped-window-list pinned apps to include Brave…"
 
-  local BRAVE_DESKTOP="brave-browser.desktop"
-  local NEMO_DESKTOP="nemo.desktop"
-  # Common terminal desktop id on Mint Cinnamon; fallback if different
-  local TERM_DESKTOP="org.gnome.Terminal.desktop"
-  [[ -f "/usr/share/applications/org.xfce.terminal.desktop" ]] && TERM_DESKTOP="org.xfce.terminal.desktop"
-  [[ -f "/usr/share/applications/gnome-terminal.desktop" ]] && TERM_DESKTOP="gnome-terminal.desktop"
-
-  # Cinnamon stores applet settings here:
-  local CFG_BASE="$HOME/.cinnamon/configs/panel-launchers@cinnamon.org"
-  if [[ ! -d "$CFG_BASE" ]]; then
-    warn "No panel-launchers config directory found; adding Brave to favorites instead."
-    add_brave_to_favorites
-    return 0
-  fi
-
-  # Pick the first panel-launchers instance (most systems have one)
-  local INST_DIR
-  INST_DIR="$(find "$CFG_BASE" -mindepth 1 -maxdepth 1 -type d | head -n 1 || true)"
-  if [[ -z "$INST_DIR" ]]; then
-    warn "panel-launchers instance not found; adding Brave to favorites instead."
-    add_brave_to_favorites
-    return 0
-  fi
-
-  # The settings file is commonly settings.json (older: xlet-settings.json)
-  local CFG_FILE="$INST_DIR/settings.json"
-  [[ -f "$CFG_FILE" ]] || CFG_FILE="$INST_DIR/xlet-settings.json"
+  local CFG_FILE="$HOME/.config/cinnamon/spices/grouped-window-list@cinnamon.org/2.json"
 
   if [[ ! -f "$CFG_FILE" ]]; then
-    warn "panel-launchers settings file not found; adding Brave to favorites instead."
-    add_brave_to_favorites
+    warn "Grouped window list config not found at $CFG_FILE; skipping pin configuration."
     return 0
   fi
 
-  log "Enabling Brave in Cinnamon panel launchers…"
-  # This Python helper tries multiple known formats:
-  # - { "launchers": { "value": [ ... ] } }
-  # - { "launcherList": { "value": [ ... ] } }
-  # - { "launchersList": [ ... ] }
-  # - plain top-level list (rare, but we handle it)
-  python3 - "$CFG_FILE" "$BRAVE_DESKTOP" "$NEMO_DESKTOP" "$TERM_DESKTOP" <<'PY'
-import json, os, sys
+  # Edit only the `pinned-apps` key, keep everything else as-is
+  python3 - "$CFG_FILE" <<'PY'
+import json, sys, os
 
-cfg_path, brave, nemo, term = sys.argv[1:5]
+path = sys.argv[1]
 
 try:
-    with open(cfg_path, 'r', encoding='utf-8') as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 except Exception:
-    data = {}
+    sys.exit(1)
 
-launcher_list = None
-container_key = None
-uses_value_wrapper = False
+if not isinstance(data, dict):
+    sys.exit(1)
 
-# Try a few likely keys in Cinnamon configs
-for key in ("launchers", "launcherList", "launchersList"):
-    if isinstance(data, dict) and key in data:
-        val = data[key]
-        # Newer-style: { "launchers": { "value": [ ... ] } }
-        if isinstance(val, dict) and "value" in val and isinstance(val["value"], list):
-            launcher_list = val["value"]
-            container_key = key
-            uses_value_wrapper = True
-            break
-        # Simpler style: { "launchersList": [ ... ] }
-        if isinstance(val, list):
-            launcher_list = val
-            container_key = key
-            break
-
-# Fallback: whole file is a list
-if launcher_list is None:
-    if isinstance(data, list):
-        launcher_list = data
-        container_key = None
-    else:
-        launcher_list = []
-
-# Normalize to strings only and drop any Firefox entries
-launcher_list = [
-    x for x in launcher_list
-    if isinstance(x, str) and "firefox" not in x.lower()
+desired_pins = [
+    "nemo.desktop",
+    "org.gnome.Terminal.desktop",
+    "brave-browser.desktop"
 ]
 
-def ensure(item, after=None):
-    if item in launcher_list:
-        return
-    if after and after in launcher_list:
-        idx = launcher_list.index(after) + 1
-        launcher_list.insert(idx, item)
-    else:
-        launcher_list.append(item)
+data["pinned-apps"] = desired_pins
 
-# Prefer to put Brave after Nemo if possible
-ensure(brave, after=nemo)
-
-# If Nemo isn't there but terminal is, try to put Brave before terminal
-if nemo not in launcher_list and term in launcher_list and brave not in launcher_list:
-    idx = launcher_list.index(term)
-    launcher_list.insert(idx, brave)
-
-# If still not added for whatever reason, append
-if brave not in launcher_list:
-    launcher_list.append(brave)
-
-# Write back in the same structural shape we found
-if container_key is None:
-    out = launcher_list
-else:
-    if uses_value_wrapper:
-        if not isinstance(data.get(container_key), dict):
-            data[container_key] = {}
-        data[container_key]["value"] = launcher_list
-    else:
-        data[container_key] = launcher_list
-    out = data
-
-tmp = cfg_path + ".tmp"
-with open(tmp, 'w', encoding='utf-8') as f:
-    json.dump(out, f, indent=2)
-os.replace(tmp, cfg_path)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
 PY
 
-  # Soft-reload panel to apply (no logout)
-  pkill -HUP -f "cinnamon$" 2>/dev/null || true
-}
-
-add_brave_to_favorites() {
-  if ! command -v gsettings >/dev/null 2>&1; then
-    warn "gsettings not available; cannot add Brave to favorites."
-    return 0
+  if [[ $? -eq 0 ]]; then
+    log " • grouped-window-list pinned apps updated."
+  else
+    warn " • Failed to update grouped-window-list pinned apps."
   fi
-
-  local CURRENT NEW
-  CURRENT="$(gsettings get org.cinnamon favorite-apps 2>/dev/null || echo "[]")"
-
-  NEW="$(python3 - "$CURRENT" <<'PY'
-import ast, sys
-
-cur = sys.argv[1]
-try:
-    fav = ast.literal_eval(cur)
-except Exception:
-    fav = []
-
-if not isinstance(fav, list):
-    fav = []
-
-if "brave-browser.desktop" not in fav:
-    fav.append("brave-browser.desktop")
-
-print(str(fav).replace('"', "'"))
-PY
-)"
-
-  gsettings set org.cinnamon favorite-apps "$NEW" 2>/dev/null || true
 }
 
 configure_vscode() {
