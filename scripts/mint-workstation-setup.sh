@@ -984,7 +984,7 @@ tweak_file_management_prefs() {
 tweak_behavior_prefs() {
   log "Tweaking behavior prefs..."
 
-  # 1) Center windows.
+  # 1) Center windows
   local centered=false
 
   if gsettings list-schemas | grep -qx 'org.cinnamon.muffin'; then
@@ -1012,8 +1012,101 @@ tweak_behavior_prefs() {
 
   [[ "$centered" == false ]] && warn " • Could not find a window-centering key on this system (skipped)."
 
-  #TODO: 2) Open menu on hover.
+  # 2) Remove Corner Bar (show desktop) from bottom-right panel corner
+  if command -v gsettings >/dev/null 2>&1 && \
+     gsettings list-schemas | grep -qx 'org.cinnamon' && \
+     gsettings list-keys org.cinnamon | grep -qx 'enabled-applets'; then
+
+    local CURRENT_APPLETS NEW_APPLETS
+    CURRENT_APPLETS="$(gsettings get org.cinnamon enabled-applets 2>/dev/null || echo "[]")"
+
+    NEW_APPLETS="$(python3 - "$CURRENT_APPLETS" <<'PY'
+import ast, sys
+
+cur = sys.argv[1]
+try:
+    arr = ast.literal_eval(cur)
+except Exception:
+    arr = []
+
+if not isinstance(arr, list):
+    arr = []
+
+# Corner Bar applet UUID is cornerbar@cinnamon.org
+filtered = [x for x in arr if 'cornerbar@cinnamon.org' not in str(x)]
+
+print(str(filtered).replace('"', "'"))
+PY
+)"
+
+    if [[ -n "$NEW_APPLETS" && "$NEW_APPLETS" != "$CURRENT_APPLETS" ]]; then
+      if gsettings set org.cinnamon enabled-applets "$NEW_APPLETS" 2>/dev/null; then
+        log " • Removed Corner Bar applet from panel (org.cinnamon::enabled-applets)"
+      else
+        warn " • Failed to update enabled applets when removing Corner Bar."
+      fi
+    else
+      log " • Corner Bar applet not present in enabled applets (nothing to remove)."
+    fi
+  else
+    warn " • Could not adjust Corner Bar applet (org.cinnamon::enabled-applets not available)."
+  fi
+
+  # 3) Enable top-left Hot Corner → Show all workspaces on hover
+  # Cinnamon stores hot corner config in org.cinnamon hotcorner-layout as:
+  #   ['func:hover:icon', '...', '...', '...']
+  # Order: top-left, top-right, bottom-left, bottom-right.
+  # "scale" == show all workspaces, "expo" == show all windows, "desktop" == show desktop. :contentReference[oaicite:1]{index=1}
+  if command -v gsettings >/dev/null 2>&1 && \
+     gsettings list-schemas | grep -qx 'org.cinnamon' && \
+     gsettings list-keys org.cinnamon | grep -qx 'hotcorner-layout'; then
+
+    local HCURRENT HNEW
+    HCURRENT="$(gsettings get org.cinnamon hotcorner-layout 2>/dev/null || echo "[]")"
+
+    HNEW="$(python3 - "$HCURRENT" <<'PY'
+import ast, sys
+
+cur = sys.argv[1]
+try:
+    layout = ast.literal_eval(cur)
+except Exception:
+    layout = []
+
+# Ensure we have a list of four entries (one per corner)
+if not isinstance(layout, list) or len(layout) != 4:
+    # Sensible default: top-left shows all workspaces, others off
+    layout = ["scale:true:0", "scale:false:0", "scale:false:0", "desktop:false:0"]
+else:
+    # Update top-left entry to "scale:true:<iconIndex>"
+    entry = str(layout[0])
+    parts = entry.split(':')
+    if len(parts) < 3:
+        parts = ['scale', 'true', '0']
+    else:
+        parts[0] = 'scale'   # show all workspaces
+        parts[1] = 'true'    # enabled on hover
+        # parts[2] = icon index (leave as-is if present)
+    layout[0] = ':'.join(parts[:3])
+
+print(str(layout).replace('"', "'"))
+PY
+)"
+
+    if [[ -n "$HNEW" ]]; then
+      if gsettings set org.cinnamon hotcorner-layout "$HNEW" 2>/dev/null; then
+        log " • Hot corner (top-left) → Show all workspaces on hover (org.cinnamon::hotcorner-layout)"
+      else
+        warn " • Failed to apply hot corner layout."
+      fi
+    fi
+  else
+    warn " • Could not configure hot corner layout (org.cinnamon::hotcorner-layout not available)."
+  fi
+
+  # TODO: Open menu on hover.
 }
+
 
 install_neofetch() {
   log "Installing Neofetch..."
