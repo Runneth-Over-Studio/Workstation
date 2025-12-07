@@ -1328,7 +1328,7 @@ install_vscode_launcher_action() {
 }
 
 refresh_cinnamon_shell() {
-  log "Refreshing Cinnamon so panel/app configs take effect…"
+  log "Refreshing Cinnamon…"
 
   # Only do this in an interactive graphical session
   if [[ -z "$DISPLAY" ]]; then
@@ -1338,7 +1338,6 @@ refresh_cinnamon_shell() {
 
   # Try to restart Cinnamon in-place. This is basically what Alt+F2, 'r' does.
   nohup cinnamon --replace >/dev/null 2>&1 &
-  log " • Cinnamon restart requested (cinnamon --replace). Panel should reload with new settings."
 }
 
 
