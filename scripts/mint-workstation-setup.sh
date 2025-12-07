@@ -782,36 +782,41 @@ set_wallpaper() {
 
   mkdir -p "$WALL_DIR"
 
-  if curl -fsSL "$WALL_URL" -o "$WALL_FILE"; then
-    log "Downloaded wallpaper to $WALL_FILE"
-  else
+  if ! curl -fsSL "$WALL_URL" -o "$WALL_FILE"; then
     warn "Failed to download wallpaper; skipping wallpaper configuration."
     return 0
   fi
 
-  local URI="file://$WALL_FILE"
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; skipping wallpaper configuration."
+    return 0
+  fi
 
-  # Prefer Cinnamon background schema
-  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.background'; then
-    gsettings set org.cinnamon.desktop.background picture-uri "$URI" 2>/dev/null || \
-      warn "Failed to set Cinnamon picture-uri."
+  local URI="file://$WALL_FILE"
+  local applied=false
+
+  # 1) Try Cinnamon background schema
+  if gsettings set org.cinnamon.desktop.background picture-uri "$URI" 2>/dev/null; then
     gsettings set org.cinnamon.desktop.background picture-options 'stretched' 2>/dev/null || \
       warn "Failed to set Cinnamon picture-options to stretched."
     log " • Wallpaper set via org.cinnamon.desktop.background (stretched)."
-    return 0
+    applied=true
   fi
 
-  # Fallback to GNOME background if Cinnamon not present (unlikely on Mint Cinnamon)
-  if gsettings list-schemas | grep -qx 'org.gnome.desktop.background'; then
-    gsettings set org.gnome.desktop.background picture-uri "$URI" 2>/dev/null || \
-      warn "Failed to set GNOME picture-uri."
-    gsettings set org.gnome.desktop.background picture-options 'stretched' 2>/dev/null || \
-      warn "Failed to set GNOME picture-options to stretched."
-    log " • Wallpaper set via org.gnome.desktop.background (stretched)."
-    return 0
+  # 2) If that didn’t work, try GNOME background schema
+  if [[ "$applied" = false ]]; then
+    if gsettings set org.gnome.desktop.background picture-uri "$URI" 2>/dev/null; then
+      gsettings set org.gnome.desktop.background picture-options 'stretched' 2>/dev/null || \
+        warn "Failed to set GNOME picture-options to stretched."
+      log " • Wallpaper set via org.gnome.desktop.background (stretched)."
+      applied=true
+    fi
   fi
 
-  warn "No compatible background schema found; wallpaper not applied."
+  # 3) Only warn if *both* attempts failed
+  if [[ "$applied" = false ]]; then
+    warn "Unable to apply wallpaper using Cinnamon or GNOME background schemas; wallpaper may not be updated."
+  fi
 }
 
 set_icon_theme() {
