@@ -454,16 +454,15 @@ set_brave_default_browser() {
 pin_brave_to_panel_cinnamon() {
   log "Configuring grouped-window-list pinned apps to include Brave…"
 
-  local CFG_FILE="$HOME/.config/cinnamon/spices/grouped-window-list@cinnamon.org/2.json"
+  llocal CFG_FILE="$HOME/.config/cinnamon/spices/grouped-window-list@cinnamon.org/2.json"
 
   if [[ ! -f "$CFG_FILE" ]]; then
     warn "Grouped window list config not found at $CFG_FILE; skipping pin configuration."
     return 0
   fi
 
-  # Edit only the `pinned-apps` key, keep everything else as-is
   python3 - "$CFG_FILE" <<'PY'
-import json, sys, os
+import json, sys
 
 path = sys.argv[1]
 
@@ -476,20 +475,36 @@ except Exception:
 if not isinstance(data, dict):
     sys.exit(1)
 
-desired_pins = [
+# Desired pinned apps order
+desired_value = [
     "nemo.desktop",
     "org.gnome.Terminal.desktop",
-    "brave-browser.desktop"
+    "brave-browser.desktop",
 ]
 
-data["pinned-apps"] = desired_pins
+pa = data.get("pinned-apps")
+
+# If it's already the full object, just update its 'value'
+if isinstance(pa, dict):
+    pa["value"] = desired_value
+else:
+    # Rebuild it as the full object if it's missing or malformed
+    data["pinned-apps"] = {
+        "type": "generic",
+        "default": [
+            "nemo.desktop",
+            "firefox.desktop",
+            "org.gnome.Terminal.desktop",
+        ],
+        "value": desired_value,
+    }
 
 with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2, sort_keys=True)
+    json.dump(data, f, indent=4, sort_keys=True)
 PY
 
   if [[ $? -eq 0 ]]; then
-    log " • grouped-window-list pinned apps updated."
+    log " • grouped-window-list pinned apps 'value' updated."
   else
     warn " • Failed to update grouped-window-list pinned apps."
   fi
