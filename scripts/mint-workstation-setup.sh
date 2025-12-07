@@ -816,6 +816,7 @@ set_wallpaper() {
   fi
 }
 
+
 set_mint_theme() {
   # gsettings is available in Cinnamon (and also used for Mint theming)
   if ! command -v gsettings >/dev/null 2>&1; then
@@ -1057,32 +1058,41 @@ set_text_editor_theme() {
 tweak_time_and_date_prefs() {
   log "Tweaking time and date preferences..."
 
-  # Disable 24-hour clock
-  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
-    gsettings set org.cinnamon.desktop.interface clock-use-24h false 2>/dev/null || \
-      warn "Could not set clock to 12-hour format."
-  elif gsettings list-schemas | grep -qx 'org.gnome.desktop.interface'; then
-    gsettings set org.gnome.desktop.interface clock-use-24h false 2>/dev/null || \
-      warn "Could not set clock to 12-hour format."
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; skipping time/date tweaks."
+    return 0
+  fi
+
+  # Prefer Cinnamon; fall back to GNOME if needed
+  if gsettings set org.cinnamon.desktop.interface clock-use-24h false 2>/dev/null; then
+    log " • Clock set to 12-hour format (org.cinnamon.desktop.interface)"
+  elif gsettings set org.gnome.desktop.interface clock-use-24h false 2>/dev/null; then
+    log " • Clock set to 12-hour format (org.gnome.desktop.interface)"
   else
-    warn "No compatible schema for clock-use-24h found."
+    warn " • Could not set clock-use-24h to false on Cinnamon or GNOME; leaving clock format unchanged."
   fi
 }
 
 tweak_screensaver_prefs() {
   log "Customizing lock screen..."
 
-  # We know the exact schema and keys from your system
-  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.screensaver'; then
-    gsettings set org.cinnamon.desktop.screensaver allow-media-control false 2>/dev/null || \
-      warn "Could not disable media controls on lock screen."
-    gsettings set org.cinnamon.desktop.screensaver show-album-art false 2>/dev/null || \
-      warn "Could not disable album art on lock screen."
-    gsettings set org.cinnamon.desktop.screensaver floating-widgets false 2>/dev/null || \
-      warn "Could not disable floating widgets on lock screen."
-  else
-    warn "Screensaver schema not found; skipping lock screen tweaks."
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; skipping lock screen tweaks."
+    return 0
   fi
+
+  # Try to write; if the first key fails, assume this schema isn't usable and bail.
+  if ! gsettings set org.cinnamon.desktop.screensaver allow-media-control false 2>/dev/null; then
+    warn "Screensaver schema not writable; skipping lock screen tweaks."
+    return 0
+  else
+    log " • Disabled media controls on lock screen."
+  fi
+
+  gsettings set org.cinnamon.desktop.screensaver show-album-art false 2>/dev/null || \
+    warn "Could not disable album art on lock screen."
+  gsettings set org.cinnamon.desktop.screensaver floating-widgets false 2>/dev/null || \
+    warn "Could not disable floating widgets on lock screen."
 
   # Refresh screensaver
   if command -v cinnamon-screensaver-command >/dev/null 2>&1; then
@@ -1095,14 +1105,14 @@ tweak_screensaver_prefs() {
 tweak_file_management_prefs() {
   log "Tweaking Nemo file management preferences..."
 
-  if ! gsettings list-schemas | grep -qx 'org.nemo.preferences'; then
-    warn "Schema org.nemo.preferences not found (is Nemo installed/running?)."
-    return 0
-  fi
-
   # 1) Default view → List View
-  gsettings set org.nemo.preferences default-folder-viewer 'list-view' 2>/dev/null || \
-    warn "Could not set Nemo default view to list-view."
+  #    Try a real write; if this fails, just skip all Nemo tweaks.
+  if ! gsettings set org.nemo.preferences default-folder-viewer 'list-view' 2>/dev/null; then
+    warn "Nemo preferences schema not available or not writable; skipping file management tweaks."
+    return 0
+  else
+    log " • Nemo default view → list-view"
+  fi
 
   # 2) Executable text files → View when opened
   if gsettings list-keys org.nemo.preferences | grep -qx 'executable-text-activation'; then
@@ -1116,11 +1126,11 @@ tweak_file_management_prefs() {
       warn "Could not enable Nemo reload toolbar button."
   fi
 
-  #TODO: 4) Rename on double-click.
+  # TODO: Rename on double-click.
 
   # Soft-reload Nemo so changes apply
   if command -v nemo >/dev/null 2>&1; then
-    nemo -q 2>/dev/null || pkill -HUP -f 'nemo' 2>/dev/null || true
+    pkill -HUP nemo 2>/dev/null || true
   fi
 }
 
@@ -1248,20 +1258,10 @@ PY
   fi
 
   # 4) Alt-Tab switcher style → Timeline (3D)
-  if command -v gsettings >/dev/null 2>&1 && \
-     gsettings list-schemas | grep -qx 'org.cinnamon.desktop.wm.preferences'; then
-
-    if gsettings list-keys org.cinnamon.desktop.wm.preferences | grep -qx 'switcher-style'; then
-      if gsettings set org.cinnamon.desktop.wm.preferences switcher-style 'timeline' 2>/dev/null; then
-        log " • Alt-Tab switcher style → Timeline (3D)"
-      else
-        warn " • Failed to set Alt-Tab switcher style."
-      fi
-    else
-      warn " • switcher-style key not found in org.cinnamon.desktop.wm.preferences; skipping Alt-Tab tweak."
-    fi
+  if ! gsettings set org.cinnamon.desktop.wm.preferences switcher-style 'timeline' 2>/dev/null; then
+    warn " • Could not set Alt-Tab switcher style to Timeline (3D)."
   else
-    warn " • org.cinnamon.desktop.wm.preferences schema not available; cannot tweak Alt-Tab behavior."
+    log " • Alt-Tab switcher style → Timeline (3D)"
   fi
 
   # TODO: Open menu on hover.
