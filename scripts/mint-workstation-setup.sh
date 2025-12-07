@@ -1259,7 +1259,7 @@ install_cinnamon_extensions() {
   install_gtile_extension
   install_vscode_launcher_action
 
-  enable_cinnamon_extensions
+  enable_blur_cinnamon_extension
 }
 
 install_blur_cinnamon_extension() {
@@ -1375,16 +1375,17 @@ install_vscode_launcher_action() {
   rm -rf "$TMPDIR"
 }
 
-enable_cinnamon_extensions() {
-  log "Enabling Cinnamon extensions and VSCode Launcher action..."
+enable_blur_cinnamon_extension() {
+  log "Enabling and configuring BlurCinnamon extension..."
 
   if ! command -v gsettings >/dev/null 2>&1; then
-    warn "gsettings not available; cannot enable Cinnamon extensions."
+    warn "gsettings not available; cannot configure BlurCinnamon."
     return 0
   fi
 
-  # --- Enable BlurCinnamon and gTile via org.cinnamon::enabled-extensions ---
-
+  #
+  # 1) Ensure BlurCinnamon is enabled as a Cinnamon extension
+  #
   local CURRENT_EXT NEW_EXT
   CURRENT_EXT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo '[]')"
 
@@ -1404,42 +1405,76 @@ def ensure(lst, item):
     if item not in lst:
         lst.append(item)
 
-# Cinnamon extension UUIDs
 ensure(exts, "BlurCinnamon@klangman")
-ensure(exts, "gTile@shuairan")
 
 print(str(exts).replace('"', "'"))
 PY
 )"
 
   if gsettings set org.cinnamon enabled-extensions "$NEW_EXT" 2>/dev/null; then
-    log " • Enabled BlurCinnamon@klangman and gTile@shuairan extensions."
+    log " • BlurCinnamon@klangman extension enabled."
   else
-    warn " • Failed to update org.cinnamon::enabled-extensions."
+    warn " • Failed to update org.cinnamon::enabled-extensions for BlurCinnamon."
   fi
 
-  # --- Ensure VSCode Launcher Nemo action is visible ---
+  #
+  # 2) Update BlurCinnamon config.json to mirror these settings:
+  #    - General → Popup Menus ON          => enable-popup-effects = true
+  #    - Panels → Use unique settings ON   => enable-panels-override = true
+  #    - Panels → Dim/Colorize = 0         => panels-opacity = 0
+  #    - Keep per-panel unique settings OFF so the global slider is used:
+  #      enable-panel-unique-settings = false
+  #
+  local CFG_DIR="$HOME/.cinnamon/configs/BlurCinnamon@klangman"
+  local CFG_FILE="$CFG_DIR/config.json"
 
-  local ACTIONS_DIR="$HOME/.local/share/nemo/actions"
-  local ACTION_FOUND="false"
+  mkdir -p "$CFG_DIR" || {
+    warn " • Could not create BlurCinnamon config directory at $CFG_DIR"
+    return 0
+  }
 
-  if [[ -d "$ACTIONS_DIR" ]]; then
-    if ls "$ACTIONS_DIR"/vscode-launcher*.nemo_action >/dev/null 2>&1; then
-      ACTION_FOUND="true"
-    fi
-  fi
+  python3 - "$CFG_FILE" <<'PY'
+import json, os, sys
 
-  if [[ "$ACTION_FOUND" == "true" ]]; then
-    log " • VSCode Launcher action file present in $ACTIONS_DIR."
+path = sys.argv[1]
+data = {}
 
-    # Ask Nemo to reload actions (non-fatal if it fails)
-    if command -v nemo >/dev/null 2>&1; then
-      # Quit Nemo to force reload of actions next time it's opened
-      nemo -q >/dev/null 2>&1 || pkill nemo >/dev/null 2>&1 || true
-      log " • Requested Nemo to reload actions (VSCode Launcher should now appear in context menu)."
-    fi
+# Load existing config if present
+if os.path.exists(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+
+if not isinstance(data, dict):
+    data = {}
+
+# General → enable popup menu effects
+data["enable-popup-effects"] = True
+
+# Panels → use unique effect settings for Panels
+data["enable-panels-override"] = True
+
+# Make sure panel effects themselves are on (just in case)
+data["enable-panels-effects"] = True
+
+# Panels → DO NOT use per-panel unique settings (so global slider is used)
+data["enable-panel-unique-settings"] = False
+
+# Panels → Dim/Colorize Background (percentage) = 0
+data["panels-opacity"] = 0
+
+# Write back the config
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+PY
+
+  if [[ $? -eq 0 ]]; then
+    log " • BlurCinnamon config updated (Popup Menus ON, Panels override ON, Dim = 0%)."
+    log "   (You may need to restart Cinnamon or log out/in for all effects to fully apply.)"
   else
-    warn " • VSCode Launcher Nemo action file not found; install_vscode_launcher_action may have failed."
+    warn " • Failed to update BlurCinnamon config.json."
   fi
 }
 
