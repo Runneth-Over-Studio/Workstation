@@ -767,42 +767,52 @@ cook_rice() {
 }
 
 set_wallpaper() {
-  log "Setting custom wallpaper..."
+  log "Configuring wallpaper…"
 
-  local PICS_DIR="$HOME/Pictures"
-  local WALL_DIR="$PICS_DIR/Wallpapers"
-  local WALL_NAME="Gnome-Desktop-851-Right-4K-No-Logo.jpg"
-  local WALL_PATH="$WALL_DIR/$WALL_NAME"
+  local WALL_DIR="$HOME/Pictures/Wallpapers"
   local WALL_URL="https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/refs/heads/main/content/wallpapers/Gnome-Desktop-851-Right-4K-No-Logo.jpg"
+  local WALL_PATH="$WALL_DIR/Gnome-Desktop-851-Right-4K-No-Logo.jpg"
 
   mkdir -p "$WALL_DIR"
 
-  if [[ ! -f "$WALL_PATH" ]]; then
-    if curl -fsSL "$WALL_URL" -o "$WALL_PATH"; then
-      log "Downloaded wallpaper to $WALL_PATH"
-    else
-      warn "Failed to download wallpaper from $WALL_URL"
-      return 0
-    fi
-  else
-    log "Wallpaper already exists at $WALL_PATH"
-  fi
-
-  if ! command -v gsettings >/dev/null 2>&1; then
-    warn "gsettings not available; cannot apply wallpaper settings."
+  if ! curl -fsSL "$WALL_URL" -o "$WALL_PATH"; then
+    warn "Failed to download wallpaper from $WALL_URL; skipping wallpaper configuration."
     return 0
   fi
 
-  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.background'; then
-    local URI="file://$WALL_PATH"
-    gsettings set org.cinnamon.desktop.background picture-uri "$URI" 2>/dev/null || \
-      warn "Could not set desktop background image."
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; skipping wallpaper configuration."
+    return 0
+  fi
 
-    # Set Picture Aspect to 'stretched'
-    gsettings set org.cinnamon.desktop.background picture-options 'stretched' 2>/dev/null || \
-      warn "Could not set picture aspect to stretched."
+  # Prefer Cinnamon schema, fall back to GNOME if needed
+  local SCHEMA=""
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.background'; then
+    SCHEMA="org.cinnamon.desktop.background"
+  elif gsettings list-schemas | grep -qx 'org.gnome.desktop.background'; then
+    SCHEMA="org.gnome.desktop.background"
+  fi
+
+  if [[ -z "$SCHEMA" ]]; then
+    warn "No compatible background schema (Cinnamon or GNOME) found; skipping wallpaper configuration."
+    return 0
+  fi
+
+  local URI="file://$WALL_PATH"
+
+  if ! gsettings set "$SCHEMA" picture-uri "$URI" 2>/dev/null; then
+    warn "Failed to set wallpaper URI on $SCHEMA."
   else
-    warn "org.cinnamon.desktop.background schema not found; skipping wallpaper configuration."
+    log " • Wallpaper set via $SCHEMA"
+  fi
+
+  # Set Picture Aspect → stretched if supported
+  if gsettings list-keys "$SCHEMA" | grep -qx 'picture-options'; then
+    if gsettings set "$SCHEMA" picture-options 'stretched' 2>/dev/null; then
+      log " • Wallpaper picture aspect → stretched"
+    else
+      warn "Failed to set picture-options to stretched."
+    fi
   fi
 }
 
@@ -841,74 +851,38 @@ set_icon_theme() {
 }
 
 set_fonts() {
-  log "Installing and applying Inter + JetBrains Mono fonts..."
+  log "Installing and configuring fonts (Inter + JetBrains Mono)…"
 
-  local FONTS_DIR="$HOME/.fonts"
-  local TMPDIR
-  TMPDIR="$(mktemp -d)"
-
-  mkdir -p "$FONTS_DIR"
-
-  # Download Inter and JetBrains Mono from Google Fonts
-  local INTER_ZIP="$TMPDIR/inter.zip"
-  local JB_ZIP="$TMPDIR/jetbrains-mono.zip"
-
-  if ! curl -fsSL "https://fonts.google.com/download?family=Inter" -o "$INTER_ZIP"; then
-    warn "Failed to download Inter font zip."
+  # Install from Ubuntu/Mint repos – much more robust than scraping Google Fonts
+  if ! sudo apt-get install -y fonts-inter fonts-jetbrains-mono; then
+    warn "Could not install fonts-inter and fonts-jetbrains-mono via apt; font configuration may not apply correctly."
   fi
 
-  if ! curl -fsSL "https://fonts.google.com/download?family=JetBrains+Mono" -o "$JB_ZIP"; then
-    warn "Failed to download JetBrains Mono font zip."
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; skipping font configuration."
+    return 0
   fi
 
-  # Extract and copy TTFs into ~/.fonts
-  if [[ -f "$INTER_ZIP" ]]; then
-    mkdir -p "$TMPDIR/inter"
-    if unzip -qq "$INTER_ZIP" -d "$TMPDIR/inter"; then
-      find "$TMPDIR/inter" -type f -name '*.ttf' -exec cp -n {} "$FONTS_DIR/" \;
-      log "Copied Inter TTF files into $FONTS_DIR"
-    else
-      warn "Failed to unzip Inter font archive."
-    fi
-  fi
+  #
+  # Default + Desktop + Document fonts → Inter Regular
+  #
+  gsettings set org.cinnamon.desktop.interface font-name 'Inter 10' 2>/dev/null || \
+    warn "Could not set interface (default/desktop) font to Inter."
 
-  if [[ -f "$JB_ZIP" ]]; then
-    mkdir -p "$TMPDIR/jetbrains"
-    if unzip -qq "$JB_ZIP" -d "$TMPDIR/jetbrains"; then
-      find "$TMPDIR/jetbrains" -type f -name '*.ttf' -exec cp -n {} "$FONTS_DIR/" \;
-      log "Copied JetBrains Mono TTF files into $FONTS_DIR"
-    else
-      warn "Failed to unzip JetBrains Mono font archive."
-    fi
-  fi
+  gsettings set org.cinnamon.desktop.interface document-font-name 'Inter 10' 2>/dev/null || \
+    warn "Could not set document font to Inter."
 
-  # Refresh font cache (non-fatal if fc-cache is missing)
-  if command -v fc-cache >/dev/null 2>&1; then
-    fc-cache -f "$FONTS_DIR" || true
-  fi
+  #
+  # Window title font → Inter Medium
+  #
+  gsettings set org.cinnamon.desktop.wm.preferences titlebar-font 'Inter Medium 10' 2>/dev/null || \
+    warn "Could not set window title font to Inter Medium."
 
-  rm -rf "$TMPDIR"
-
-  # Apply fonts via gsettings (Cinnamon)
-  if command -v gsettings >/dev/null 2>&1; then
-    if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
-      # Default + Desktop font
-      gsettings set org.cinnamon.desktop.interface font-name 'Inter Regular 10' 2>/dev/null || \
-        warn "Could not set default font to Inter Regular."
-
-      # Monospace font
-      gsettings set org.cinnamon.desktop.interface monospace-font-name 'JetBrains Mono Regular 10' 2>/dev/null || \
-        warn "Could not set monospace font to JetBrains Mono Regular."
-    fi
-
-    if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.wm.preferences'; then
-      # Window title font
-      gsettings set org.cinnamon.desktop.wm.preferences titlebar-font 'Inter Medium 10' 2>/dev/null || \
-        warn "Could not set titlebar font to Inter Medium."
-    fi
-  else
-    warn "gsettings not found; skipping font configuration in Cinnamon."
-  fi
+  #
+  # Monospace → JetBrains Mono Regular
+  #
+  gsettings set org.cinnamon.desktop.interface monospace-font-name 'JetBrains Mono 10' 2>/dev/null || \
+    warn "Could not set monospace font to JetBrains Mono."
 }
 
 set_themes() {
@@ -927,18 +901,15 @@ set_system_theme() {
     return 0
   fi
 
-  local THEME_NAME="Catppuccin-Frappe-Standard-Blue-Dark"
-  # Using the official Catppuccin GTK release asset
-  local THEME_URL="https://github.com/catppuccin/gtk/releases/download/v1.0.3/${THEME_NAME}.zip"
   local THEMES_DIR="$HOME/.themes"
-
-  mkdir -p "$THEMES_DIR"
-
   local TMPDIR
   TMPDIR="$(mktemp -d)" || {
     warn "Could not create temp directory for GTK theme; skipping."
     return 0
   }
+
+  local ASSET_NAME="catppuccin-frappe-blue-standard+default.zip"
+  local THEME_URL="https://github.com/catppuccin/gtk/releases/download/v1.0.3/${ASSET_NAME}"
 
   if ! curl -fsSL "$THEME_URL" -o "$TMPDIR/theme.zip"; then
     warn "Failed to download Catppuccin GTK theme from $THEME_URL; skipping."
@@ -946,28 +917,38 @@ set_system_theme() {
     return 0
   fi
 
-  if ! unzip -q "$TMPDIR/theme.zip" -d "$TMPDIR"; then
+  if ! unzip -q "$TMPDIR/theme.zip" -d "$TMPDIR/extracted"; then
     warn "Failed to unzip Catppuccin GTK theme; skipping."
     rm -rf "$TMPDIR"
     return 0
   fi
 
-  # Prefer a folder matching THEME_NAME; if not found, copy all subdirectories
-  if ls "$TMPDIR" | grep -qx "$THEME_NAME"; then
-    cp -r "$TMPDIR/$THEME_NAME" "$THEMES_DIR/" 2>/dev/null || \
-      warn "Could not copy $THEME_NAME into $THEMES_DIR."
-  else
-    cp -r "$TMPDIR"/*/ "$THEMES_DIR/" 2>/dev/null || \
-      warn "Could not copy extracted GTK themes into $THEMES_DIR."
+  mkdir -p "$THEMES_DIR"
+
+  # Use the first directory inside the extracted archive as the source
+  local SRC_DIR
+  SRC_DIR="$(find "$TMPDIR/extracted" -maxdepth 1 -mindepth 1 -type d | head -n1)" || true
+  if [[ -z "$SRC_DIR" ]]; then
+    warn "Could not find extracted theme directory; skipping."
+    rm -rf "$TMPDIR"
+    return 0
+  fi
+
+  local THEME_NAME="Catppuccin-Frappe-Standard-Blue-Dark"
+  rm -rf "$THEMES_DIR/$THEME_NAME"
+  if ! cp -r "$SRC_DIR" "$THEMES_DIR/$THEME_NAME"; then
+    warn "Could not copy theme into $THEMES_DIR; skipping."
+    rm -rf "$TMPDIR"
+    return 0
   fi
 
   rm -rf "$TMPDIR"
 
-  # Apply to Cinnamon + GTK
   gsettings set org.cinnamon.desktop.interface gtk-theme "$THEME_NAME" 2>/dev/null || \
     warn "Could not set GTK theme to $THEME_NAME."
+
   gsettings set org.cinnamon.theme name "$THEME_NAME" 2>/dev/null || \
-    warn "Could not set Cinnamon theme to $THEME_NAME."
+    warn "Could not set Cinnamon theme name to $THEME_NAME."
 }
 
 set_terminal_theme() {
