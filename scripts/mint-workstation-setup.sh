@@ -953,7 +953,6 @@ set_terminal_theme() {
   sudo apt-get install -y dconf-cli uuid-runtime >/dev/null 2>&1 || true
 
   # 2) Run Gogh's Catppuccin Frappe installer (non-interactively)
-  #    This uses apply-colors.sh under the hood and applies the color scheme.
   local TMPDIR BASE_URL
   TMPDIR="$(mktemp -d)" || {
     warn "Could not create temp directory for Gogh; skipping terminal theme."
@@ -961,7 +960,6 @@ set_terminal_theme() {
   }
   BASE_URL="https://raw.githubusercontent.com/Gogh-Co/Gogh/master"
 
-  # Download apply-colors helper and Catppuccin Frappe installer
   if ! curl -fsSL "$BASE_URL/apply-colors.sh" -o "$TMPDIR/apply-colors.sh"; then
     warn "Failed to download Gogh apply-colors.sh; skipping terminal color scheme."
     rm -rf "$TMPDIR"
@@ -978,33 +976,44 @@ set_terminal_theme() {
 
   (
     cd "$TMPDIR" || exit 0
-    # Tell Gogh which terminal to target; it will call apply-colors.sh
     TERMINAL=gnome-terminal bash ./catppuccin-frappe.sh
   ) || warn "Gogh Catppuccin Frappe install script failed; colors may not have applied correctly."
 
   rm -rf "$TMPDIR"
 
-  # 3) Set JetBrains Mono 11 on the DEFAULT profile, regardless of its visible-name
-  if command -v dconf >/dev/null 2>&1; then
-    local def prof_path
-
-    # Read the default profile ID, e.g. 'b1dcc9dd-5262-4d8d-a863-c897e6d979b9'
-    def="$(dconf read /org/gnome/terminal/legacy/profiles:/default 2>/dev/null | tr -d "'")"
-
-    if [[ -n "$def" ]]; then
-      prof_path="/org/gnome/terminal/legacy/profiles:/:$def/"
-
-      dconf write "${prof_path}use-system-font" "false" 2>/dev/null || true
-      dconf write "${prof_path}font" "'JetBrains Mono 11'" 2>/dev/null || \
-        warn "Could not set JetBrains Mono font on terminal profile $def."
-
-      log " • Terminal profile $def font → JetBrains Mono 11 (system font disabled)."
-    else
-      warn "Could not read default GNOME Terminal profile; skipped font tweak."
-    fi
-  else
+  # 3) Set JetBrains Mono 11 on the *default* profile (or first profile if default is unset)
+  if ! command -v dconf >/dev/null 2>&1; then
     warn "dconf not available; cannot tweak terminal profile font."
+    return 0
   fi
+
+  local def prof_id prof_path
+
+  # Try to read default profile ID
+  def="$(dconf read /org/gnome/terminal/legacy/profiles:/default 2>/dev/null | tr -d "'")"
+
+  # If default is empty, pick the first listed profile and set it as default
+  if [[ -z "$def" ]]; then
+    prof_id="$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null | head -n1 | tr -d '/:')"
+    if [[ -n "$prof_id" ]]; then
+      def="$prof_id"
+      dconf write /org/gnome/terminal/legacy/profiles:/default "'$def'" 2>/dev/null || true
+      log " • GNOME Terminal default profile set to $def."
+    fi
+  fi
+
+  if [[ -z "$def" ]]; then
+    warn "Could not determine a GNOME Terminal profile; skipped font tweak."
+    return 0
+  fi
+
+  prof_path="/org/gnome/terminal/legacy/profiles:/:$def/"
+
+  dconf write "${prof_path}use-system-font" "false" 2>/dev/null || true
+  dconf write "${prof_path}font" "'JetBrains Mono 11'" 2>/dev/null || \
+    warn "Could not set JetBrains Mono font on terminal profile $def."
+
+  log " • Terminal profile $def font → JetBrains Mono 11 (system font disabled)."
 }
 
 set_text_editor_theme() {
@@ -1127,98 +1136,96 @@ tweak_behavior_prefs() {
   #
   # 1) Center new windows (Cinnamon / muffin)
   #
-  if gsettings list-schemas | grep -qx 'org.cinnamon.muffin'; then
-    if gsettings list-keys org.cinnamon.muffin | grep -qx 'placement-mode'; then
-      if gsettings set org.cinnamon.muffin placement-mode 'center' 2>/dev/null; then
-        log " • Window placement → center (org.cinnamon.muffin::placement-mode)"
-      fi
-    elif gsettings list-keys org.cinnamon.muffin | grep -qx 'center-new-windows'; then
-      if gsettings set org.cinnamon.muffin center-new-windows true 2>/dev/null; then
-        log " • Window placement → center (org.cinnamon.muffin::center-new-windows)"
-      fi
-    fi
+  if gsettings set org.cinnamon.muffin placement-mode 'center' 2>/dev/null; then
+    log " • Window placement → center (org.cinnamon.muffin::placement-mode)"
   else
-    warn " • org.cinnamon.muffin schema not present; skipping window-centering tweak."
+    # Fallback if placement-mode isn't supported
+    if gsettings set org.cinnamon.muffin center-new-windows true 2>/dev/null; then
+      log " • Window placement → center (org.cinnamon.muffin::center-new-windows)"
+    else
+      warn " • Could not center new windows via org.cinnamon.muffin."
+    fi
   fi
 
   #
   # 2) Remove Corner Bar applet from panel
   #
-  if gsettings list-schemas | grep -qx 'org.cinnamon'; then
-    local cur new
-    cur="$(gsettings get org.cinnamon enabled-applets 2>/dev/null || echo '[]')"
+  local CURRENT_APPLETS NEW_APPLETS
+  CURRENT_APPLETS="$(gsettings get org.cinnamon enabled-applets 2>/dev/null || echo '[]')"
 
-    new="$(python3 - "$cur" <<'PY'
+  NEW_APPLETS="$(python3 - "$CURRENT_APPLETS" <<'PY'
 import ast, sys
+
 cur = sys.argv[1]
 try:
     applets = ast.literal_eval(cur)
 except Exception:
     applets = []
-applets = [a for a in applets if 'cornerbar@cinnamon.org' not in a]
-print(applets)
+
+if not isinstance(applets, list):
+    applets = []
+
+# Corner Bar applet UUID is cornerbar@cinnamon.org
+applets = [a for a in applets if 'cornerbar@cinnamon.org' not in str(a)]
+
+print(str(applets).replace('"', "'"))
 PY
 )"
-    if gsettings set org.cinnamon enabled-applets "$new" 2>/dev/null; then
-      log " • Corner Bar applet removed from panel."
-    else
-      warn " • Failed to update enabled-applets for Corner Bar removal."
-    fi
+
+  if gsettings set org.cinnamon enabled-applets "$NEW_APPLETS" 2>/dev/null; then
+    log " • Corner Bar applet removed from panel."
   else
-    warn " • org.cinnamon schema not present; skipping Corner Bar tweak."
+    warn " • Failed to update enabled-applets for Corner Bar removal."
   fi
 
   #
-  # 3) Hot corner: top-left → Show all workspaces
-  #    (expo = all workspaces, scale = all windows)
+  # 3) Hot corner: top-left → Show all workspaces (expo)
   #
-  if gsettings list-schemas | grep -qx 'org.cinnamon'; then
-    local cur hc
-    cur="$(gsettings get org.cinnamon hotcorner-layout 2>/dev/null || echo "['desktop:false:0','desktop:false:0','desktop:false:0','desktop:false:0']")"
+  local HCURRENT HNEW
+  HCURRENT="$(gsettings get org.cinnamon hotcorner-layout 2>/dev/null || echo "['desktop:false:0','desktop:false:0','desktop:false:0','desktop:false:0']")"
 
-    hc="$(python3 - "$cur" <<'PY'
+  HNEW="$(python3 - "$HCURRENT" <<'PY'
 import ast, sys
+
 cur = sys.argv[1]
 try:
     corners = ast.literal_eval(cur)
 except Exception:
     corners = ['desktop:false:0'] * 4
 
-# Ensure exactly 4 entries
+if not isinstance(corners, list):
+    corners = ['desktop:false:0'] * 4
+
+# Ensure exactly 4 entries (TL, TR, BL, BR)
 if len(corners) < 4:
     corners += ['desktop:false:0'] * (4 - len(corners))
 elif len(corners) > 4:
     corners = corners[:4]
 
-# Top-left: expo:true:0 => Show all workspaces
+# Top-left: expo:true:0 → Show all workspaces
 corners[0] = 'expo:true:0'
-print(corners)
+
+print(str(corners).replace('"', "'"))
 PY
 )"
-    if gsettings set org.cinnamon hotcorner-layout "$hc" 2>/dev/null; then
-      log " • Hot corner (top-left) → Show all workspaces (expo)."
-    else
-      warn " • Failed to update hotcorner-layout."
-    fi
+
+  if gsettings set org.cinnamon hotcorner-layout "$HNEW" 2>/dev/null; then
+    log " • Hot corner (top-left) → Show all workspaces (expo:true:0)."
+  else
+    warn " • Failed to update hotcorner-layout."
   fi
 
   #
-  # 4) Alt-Tab → Timeline (3D)
+  # 4) Alt-Tab switcher style → Timeline (3D)
   #
-  if gsettings list-schemas | grep -qx 'org.cinnamon'; then
-    if gsettings list-keys org.cinnamon | grep -qx 'alttab-switcher-style'; then
-      if gsettings set org.cinnamon alttab-switcher-style 'timeline' 2>/dev/null; then
-        log " • Alt-Tab switcher → Timeline (3D)."
-      else
-        warn " • Failed to set Alt-Tab switcher style to 'timeline'."
-      fi
-    fi
+  if gsettings set org.cinnamon alttab-switcher-style 'timeline' 2>/dev/null; then
+    log " • Alt-Tab switcher style → Timeline (3D)."
+  else
+    warn " • Failed to set Alt-Tab switcher style to 'timeline'."
   fi
 
-  # TODO: 5) Open menu on hover.
+  # TODO: Open menu on hover.
 }
-
-
 
 install_neofetch() {
   log "Installing Neofetch..."
