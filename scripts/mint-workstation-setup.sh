@@ -1258,6 +1258,8 @@ install_cinnamon_extensions() {
   install_blur_cinnamon_extension
   install_gtile_extension
   install_vscode_launcher_action
+
+  enable_cinnamon_extensions
 }
 
 install_blur_cinnamon_extension() {
@@ -1371,6 +1373,74 @@ install_vscode_launcher_action() {
   fi
 
   rm -rf "$TMPDIR"
+}
+
+enable_cinnamon_extensions() {
+  log "Enabling Cinnamon extensions and VSCode Launcher action..."
+
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not available; cannot enable Cinnamon extensions."
+    return 0
+  fi
+
+  # --- Enable BlurCinnamon and gTile via org.cinnamon::enabled-extensions ---
+
+  local CURRENT_EXT NEW_EXT
+  CURRENT_EXT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo '[]')"
+
+  NEW_EXT="$(python3 - "$CURRENT_EXT" <<'PY'
+import ast, sys
+
+cur = sys.argv[1]
+try:
+    exts = ast.literal_eval(cur)
+except Exception:
+    exts = []
+
+if not isinstance(exts, list):
+    exts = []
+
+def ensure(lst, item):
+    if item not in lst:
+        lst.append(item)
+
+# Cinnamon extension UUIDs
+ensure(exts, "BlurCinnamon@klangman")
+ensure(exts, "gTile@shuairan")
+
+print(str(exts).replace('"', "'"))
+PY
+)"
+
+  if gsettings set org.cinnamon enabled-extensions "$NEW_EXT" 2>/dev/null; then
+    log " • Enabled BlurCinnamon@klangman and gTile@shuairan extensions."
+  else
+    warn " • Failed to update org.cinnamon::enabled-extensions."
+  fi
+
+  # --- Ensure VSCode Launcher Nemo action is visible ---
+
+  local ACTIONS_DIR="$HOME/.local/share/nemo/actions"
+  local ACTION_FOUND="false"
+
+  if [[ -d "$ACTIONS_DIR" ]]; then
+    if ls "$ACTIONS_DIR"/vscode-launcher*.nemo_action >/dev/null 2>&1; then
+      ACTION_FOUND="true"
+    fi
+  fi
+
+  if [[ "$ACTION_FOUND" == "true" ]]; then
+    log " • VSCode Launcher action file present in $ACTIONS_DIR."
+
+    # Ask Nemo to reload actions (non-fatal if it fails)
+    if command -v nemo >/dev/null 2>&1; then
+      # Quit Nemo to force reload of actions next time it's opened
+      nemo -q >/dev/null 2>&1 || pkill nemo >/dev/null 2>&1 || true
+      log " • Requested Nemo to reload actions (VSCode Launcher should now appear in context menu)."
+    fi
+  else
+    warn " • VSCode Launcher Nemo action file not found; install_vscode_launcher_action may have failed."
+  fi
 }
 
 # =============================================================================
