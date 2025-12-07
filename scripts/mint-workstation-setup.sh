@@ -374,7 +374,7 @@ uninstall_firefox() {
 
   # Remove user profile (optional; keep backup if exists)
   if [[ -d "$HOME/.mozilla" ]]; then
-    TS=$(date +%Y%m%d-%H%M%S)
+    TS="$(date +%Y%m%d-%H%M%S)"
     mv "$HOME/.mozilla" "$HOME/.mozilla.bak.$TS"
     log "Backed up existing Firefox profile to ~/.mozilla.bak.$TS"
   fi
@@ -699,7 +699,7 @@ configure_favorites() {
     return 0
   fi
 
-  log "Updating Cinnamon favorites (remove Files/Terminal, add VS Code/Joplin)…"
+  log "Updating Cinnamon favorites (remove Files/Terminal, add Joplin then VS Code)…"
 
   local CURRENT NEW
   CURRENT="$(gsettings get org.cinnamon favorite-apps 2>/dev/null || echo "[]")"
@@ -717,14 +717,14 @@ except Exception:
 if not isinstance(fav, list):
     fav = []
 
-# Entries we want to remove from favorites (already pinned to panel or not desired)
+# Entries we want to remove from favorites (already pinned to panel or to be reinserted)
 to_remove = {
     "nemo.desktop",
     "org.gnome.Terminal.desktop",
     "gnome-terminal.desktop",
     "org.xfce.terminal.desktop",
     "xterm.desktop",
-    # We will reinsert VS Code and Joplin in a specific order, so strip them first
+    # We'll reinsert Joplin + VS Code in a specific order
     "code.desktop",
     "appimagekit-joplin.desktop",
     "joplin.desktop",
@@ -736,19 +736,19 @@ def ensure(lst, item):
     if item not in lst:
         lst.append(item)
 
-# 1) VS Code first
-ensure(fav, "code.desktop")
-
-# 2) Then Joplin
+# 1) Joplin first
 joplin_candidates = [
     "appimagekit-joplin.desktop",  # common from official Joplin script
     "joplin.desktop",
 ]
 
-# Prefer whichever candidate is already present (if any), otherwise use first
-existing = next((c for c in joplin_candidates if c in fav), None)
-joplin_id = existing if existing is not None else joplin_candidates[0]
+# Prefer an existing candidate if any, otherwise use the first
+existing_joplin = next((c for c in joplin_candidates if c in fav), None)
+joplin_id = existing_joplin if existing_joplin is not None else joplin_candidates[0]
 ensure(fav, joplin_id)
+
+# 2) VS Code second
+ensure(fav, "code.desktop")
 
 print(str(fav).replace('"', "'"))
 PY
@@ -756,7 +756,6 @@ PY
 
   gsettings set org.cinnamon favorite-apps "$NEW" 2>/dev/null || true
 }
-
 
 # =============================================================================
 #  6) "RICE" – THEMES & AESTHETICS
@@ -813,29 +812,6 @@ set_wallpaper() {
   fi
 
   warn "No compatible background schema found; wallpaper not applied."
-}
-
-set_mint_theme() {
-  # gsettings is available in Cinnamon (and also used for Mint theming)
-  if ! command -v gsettings >/dev/null 2>&1; then
-    warn "gsettings not found; skipping Mint theme configuration."
-    return 0
-  fi
-
-  log "Applying Linux Mint theme..."
-
-  # Apply core theme components
-  gsettings set org.cinnamon.theme name 'Mint-Y-Dark' 2>/dev/null || true
-  gsettings set org.cinnamon.desktop.interface gtk-theme 'Mint-Y-Dark' 2>/dev/null || true
-  gsettings set org.cinnamon.desktop.wm.preferences theme 'Mint-Y-Dark' 2>/dev/null || true
-  gsettings set org.cinnamon.desktop.interface cursor-theme 'DMZ-White' 2>/dev/null || true
-
-  # Optional: Adjust accent color to Mint-Y
-  if gsettings writable org.cinnamon.desktop.interface accent-color &>/dev/null; then
-    gsettings set org.cinnamon.desktop.interface accent-color 'mint-y' 2>/dev/null || true
-  fi
-
-  log "Linux Mint theme applied (Mint-Y Dark)."
 }
 
 set_icon_theme() {
