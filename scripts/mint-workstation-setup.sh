@@ -454,7 +454,7 @@ set_brave_default_browser() {
 pin_brave_to_panel_cinnamon() {
   log "Configuring grouped-window-list pinned apps to include Brave…"
 
-  llocal CFG_FILE="$HOME/.config/cinnamon/spices/grouped-window-list@cinnamon.org/2.json"
+  local CFG_FILE="$HOME/.config/cinnamon/spices/grouped-window-list@cinnamon.org/2.json"
 
   if [[ ! -f "$CFG_FILE" ]]; then
     warn "Grouped window list config not found at $CFG_FILE; skipping pin configuration."
