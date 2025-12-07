@@ -1418,63 +1418,68 @@ PY
   fi
 
   #
-  # 2) Update BlurCinnamon config.json to mirror these settings:
-  #    - General → Popup Menus ON          => enable-popup-effects = true
-  #    - Panels → Use unique settings ON   => enable-panels-override = true
-  #    - Panels → Dim/Colorize = 0         => panels-opacity = 0
-  #    - Keep per-panel unique settings OFF so the global slider is used:
-  #      enable-panel-unique-settings = false
+  # 2) Patch BlurCinnamon's spice config JSON (NO schema, so edit file directly).
+  #    We only touch a few 'value' fields:
+  #      - enable-popup-effects.value          -> True
+  #      - enable-panels-override.value        -> True
+  #      - enable-panels-effects.value         -> True (safe default)
+  #      - enable-panel-unique-settings.value  -> False
+  #      - panels-opacity.value                -> 0
   #
-  local CFG_DIR="$HOME/.cinnamon/configs/BlurCinnamon@klangman"
-  local CFG_FILE="$CFG_DIR/config.json"
+  local CFG_DIR="$HOME/.config/cinnamon/spices/BlurCinnamon@klangman"
+  local CFG_FILE="$CFG_DIR/BlurCinnamon@klangman.json"
 
-  mkdir -p "$CFG_DIR" || {
-    warn " • Could not create BlurCinnamon config directory at $CFG_DIR"
+  if [[ ! -f "$CFG_FILE" ]]; then
+    warn " • BlurCinnamon config file not found at $CFG_FILE; skipping JSON tweaks."
     return 0
-  }
+  fi
 
   python3 - "$CFG_FILE" <<'PY'
 import json, os, sys
 
 path = sys.argv[1]
-data = {}
 
-# Load existing config if present
-if os.path.exists(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        data = {}
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+except Exception:
+    # If we can't parse it safely, bail out rather than risk breaking the extension
+    sys.exit(1)
 
 if not isinstance(data, dict):
-    data = {}
+    sys.exit(1)
 
-# General → enable popup menu effects
-data["enable-popup-effects"] = True
+def set_value(key, new_val):
+    """Set the 'value' field on a key if it exists and is a dict."""
+    node = data.get(key)
+    if isinstance(node, dict):
+        node["value"] = new_val
 
-# Panels → use unique effect settings for Panels
-data["enable-panels-override"] = True
+# General → Popup Menus ON
+set_value("enable-popup-effects", True)
 
-# Make sure panel effects themselves are on (just in case)
-data["enable-panels-effects"] = True
+# Panels → Use unique effect settings for Panels ON
+set_value("enable-panels-override", True)
 
-# Panels → DO NOT use per-panel unique settings (so global slider is used)
-data["enable-panel-unique-settings"] = False
+# Panels effects themselves ON (safe default)
+set_value("enable-panels-effects", True)
+
+# Panels → DO NOT use per-panel unique settings (so global slider applies)
+set_value("enable-panel-unique-settings", False)
 
 # Panels → Dim/Colorize Background (percentage) = 0
-data["panels-opacity"] = 0
+set_value("panels-opacity", 0.0)
 
-# Write back the config
+# Write file back
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, sort_keys=True)
 PY
 
   if [[ $? -eq 0 ]]; then
-    log " • BlurCinnamon config updated (Popup Menus ON, Panels override ON, Dim = 0%)."
-    log "   (You may need to restart Cinnamon or log out/in for all effects to fully apply.)"
+    log " • BlurCinnamon config patched (Popup Menus ON, Panels override ON, Dim = 0%)."
+    log "   (If changes don't appear immediately, try restarting Cinnamon or logging out/in.)"
   else
-    warn " • Failed to update BlurCinnamon config.json."
+    warn " • Failed to patch BlurCinnamon config JSON; leaving it unchanged."
   fi
 }
 
