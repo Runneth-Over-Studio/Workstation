@@ -920,16 +920,22 @@ update_catppuccin_theme_thumbnails() {
     SRC_GTK="$BASE2/gtk-3.0/thumbnail.png"
   fi
 
-  # System thumbnail dirs used by cs_themes.py
+  # System thumbnail dirs used by Cinnamon
   local DEST_CIN_DIR="/usr/share/cinnamon/thumbnails/cinnamon"
   local DEST_GTK_DIR="/usr/share/cinnamon/thumbnails/gtk-3.0"
 
-  # Copy cinnamon thumbnail if we found one
+  # We want files named after the theme, e.g.
+  #   /usr/share/cinnamon/thumbnails/cinnamon/catppuccin-frappe-blue-standard+default.png
+  #   /usr/share/cinnamon/thumbnails/gtk-3.0/catppuccin-frappe-blue-standard+default.png
+  local DEST_CIN_FILE="$DEST_CIN_DIR/${THEME_NAME}.png"
+  local DEST_GTK_FILE="$DEST_GTK_DIR/${THEME_NAME}.png"
+
+  # Copy Cinnamon preview
   if [[ -n "$SRC_CIN" && -f "$SRC_CIN" ]]; then
     if [[ -d "$DEST_CIN_DIR" ]]; then
-      log " • Copying Cinnamon theme thumbnail from $SRC_CIN → $DEST_CIN_DIR/thumbnail.png"
-      sudo cp "$SRC_CIN" "$DEST_CIN_DIR/thumbnail.png" 2>/dev/null || \
-        warn "Failed to copy Cinnamon thumbnail into $DEST_CIN_DIR."
+      log " • Copying Cinnamon theme thumbnail from $SRC_CIN → $DEST_CIN_FILE"
+      sudo cp "$SRC_CIN" "$DEST_CIN_FILE" 2>/dev/null || \
+        warn "Failed to copy Cinnamon thumbnail into $DEST_CIN_FILE."
     else
       warn "Cinnamon thumbnails directory $DEST_CIN_DIR not found; skipping Cinnamon preview."
     fi
@@ -937,12 +943,12 @@ update_catppuccin_theme_thumbnails() {
     warn "Catppuccin Cinnamon thumbnail.png not found under $BASE1 or $BASE2."
   fi
 
-  # Copy GTK thumbnail if we found one
+  # Copy GTK preview
   if [[ -n "$SRC_GTK" && -f "$SRC_GTK" ]]; then
     if [[ -d "$DEST_GTK_DIR" ]]; then
-      log " • Copying GTK theme thumbnail from $SRC_GTK → $DEST_GTK_DIR/thumbnail.png"
-      sudo cp "$SRC_GTK" "$DEST_GTK_DIR/thumbnail.png" 2>/dev/null || \
-        warn "Failed to copy GTK thumbnail into $DEST_GTK_DIR."
+      log " • Copying GTK theme thumbnail from $SRC_GTK → $DEST_GTK_FILE"
+      sudo cp "$SRC_GTK" "$DEST_GTK_FILE" 2>/dev/null || \
+        warn "Failed to copy GTK thumbnail into $DEST_GTK_FILE."
     else
       warn "GTK thumbnails directory $DEST_GTK_DIR not found; skipping GTK preview."
     fi
