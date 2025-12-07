@@ -859,284 +859,134 @@ set_fonts() {
 set_themes() {
   log "Applying themes…"
 
+  set_terminal_theme
   set_system_theme
-  install_gogh_theme
   set_text_editor_theme
 }
 
-set_system_theme() {
-  log "Configuring system theme (Catppuccin Frappe Standard Blue Dark)…"
+set_terminal_theme() {
+  log "Installing Catppuccin Frappé theme for GNOME Terminal…"
 
-  if ! command -v gsettings >/dev/null 2>&1; then
-    warn "gsettings not found; skipping system theme configuration."
+  # Make sure the essentials are present
+  if ! command -v python3 >/dev/null 2>&1; then
+    log " • Installing python3…"
+    sudo apt-get update -y >/dev/null 2>&1 || true
+    sudo apt-get install -y python3 >/dev/null 2>&1 || {
+      warn "Failed to install python3; cannot run Catppuccin installer."
+      return 0
+    }
+  fi
+
+  if ! command -v dconf >/dev/null 2>&1; then
+    log " • Installing dconf-cli…"
+    sudo apt-get update -y >/dev/null 2>&1 || true
+    sudo apt-get install -y dconf-cli >/dev/null 2>&1 || {
+      warn "Failed to install dconf-cli; cannot configure GNOME Terminal profiles."
+      return 0
+    }
+  fi
+
+  # 1) Run the Catppuccin GNOME Terminal installer (Frappé & friends)
+  log " • Running Catppuccin GNOME Terminal installer (v1.0.0)…"
+  if ! curl -fsSL "https://raw.githubusercontent.com/catppuccin/gnome-terminal/v1.0.0/install.py" | python3 - >/dev/null 2>&1; then
+    warn "Catppuccin gnome-terminal install.py failed; profiles may not have been created."
     return 0
   fi
 
-  local THEMES_DIR="$HOME/.themes"
-  local TMPDIR
-  TMPDIR="$(mktemp -d)" || {
-    warn "Could not create temp directory for GTK theme; skipping."
+  # 2) Set Catppuccin Frappé as the default GNOME Terminal profile
+  #    UUID taken from install.py (frappe entry).
+  local FRAPPE_UUID="71a9971e-e829-43a9-9b2f-4565c855d664"
+  local PROFILE_PATH="/org/gnome/terminal/legacy/profiles:/:${FRAPPE_UUID}/"
+
+  # Check that the profile actually exists and looks like Catppuccin Frappé
+  local VISIBLE_NAME
+  VISIBLE_NAME="$(dconf read "${PROFILE_PATH}visible-name" 2>/dev/null | tr -d "'")"
+
+  if [[ -z "$VISIBLE_NAME" ]]; then
+    warn "Catppuccin Frappé profile not found in dconf; leaving default profile unchanged."
+    return 0
+  fi
+
+  log " • Found GNOME Terminal profile ${FRAPPE_UUID} (${VISIBLE_NAME}). Setting as default…"
+
+  dconf write /org/gnome/terminal/legacy/profiles:/default "'${FRAPPE_UUID}'" 2>/dev/null || {
+    warn "Failed to set Catppuccin Frappé as default GNOME Terminal profile."
     return 0
   }
 
-  local ASSET_NAME="catppuccin-frappe-blue-standard+default.zip"
-  local THEME_URL="https://github.com/catppuccin/gtk/releases/download/v1.0.3/${ASSET_NAME}"
-
-  if ! curl -fsSL "$THEME_URL" -o "$TMPDIR/theme.zip"; then
-    warn "Failed to download Catppuccin GTK theme from $THEME_URL; skipping."
-    rm -rf "$TMPDIR"
-    return 0
-  fi
-
-  if ! unzip -q "$TMPDIR/theme.zip" -d "$TMPDIR/extracted"; then
-    warn "Failed to unzip Catppuccin GTK theme; skipping."
-    rm -rf "$TMPDIR"
-    return 0
-  fi
-
-  mkdir -p "$THEMES_DIR"
-
-# Use the first directory inside the extracted archive as the source
-  local SRC_DIR THEME_NAME
-  SRC_DIR="$(find "$TMPDIR/extracted" -maxdepth 1 -mindepth 1 -type d | head -n1)" || true
-  if [[ -z "$SRC_DIR" ]]; then
-    warn "Could not find extracted theme directory; skipping."
-    rm -rf "$TMPDIR"
-    return 0
-  fi
-
-  # Derive THEME_NAME from the actual extracted directory name
-  THEME_NAME="$(basename "$SRC_DIR")"
-
-  mkdir -p "$THEMES_DIR"
-  rm -rf "$THEMES_DIR/$THEME_NAME"
-
-  if ! cp -r "$SRC_DIR" "$THEMES_DIR/"; then
-    warn "Could not copy theme into $THEMES_DIR; skipping."
-    rm -rf "$TMPDIR"
-    return 0
-  fi
-
-  rm -rf "$TMPDIR"
-
-  gsettings set org.cinnamon.desktop.interface gtk-theme "$THEME_NAME" 2>/dev/null || \
-    warn "Could not set GTK theme to $THEME_NAME."
-
-  gsettings set org.cinnamon.theme name "$THEME_NAME" 2>/dev/null || \
-    warn "Could not set Cinnamon theme name to $THEME_NAME."
+  log " • Catppuccin Frappé is now the default GNOME Terminal profile."
 }
 
-install_gogh_theme() {
-  log "Installing Gogh (Catppuccin Frappé)…"
+set_system_theme() {
+  log "Installing and applying Catppuccin Frappé (Blue) GTK theme…"
 
-  #
-  # 1. Pre-install requirements
-  #
-  sudo apt-get update -y >/dev/null 2>&1 || true
-  sudo apt-get install -y dconf-cli uuid-runtime >/dev/null 2>&1 || {
-    warn "Failed to install Gogh dependencies (dconf-cli, uuid-runtime)."
-    return 0
-  }
+  # Make sure python3 is available
+  if ! command -v python3 >/dev/null 2>&1; then
+    log " • python3 not found; installing…"
+    sudo apt-get update -y >/dev/null 2>&1 || true
+    sudo apt-get install -y python3 >/dev/null 2>&1 || {
+      warn "Failed to install python3; cannot run Catppuccin GTK installer."
+      return 0
+    }
+  fi
 
-  log " • Resetting GNOME Terminal profiles (fresh state)…"
-  dconf reset -f /org/gnome/terminal/legacy/profiles:/ >/dev/null 2>&1 || true
+  # Make sure curl is available
+  if ! command -v curl >/dev/null 2>&1; then
+    log " • curl not found; installing…"
+    sudo apt-get update -y >/dev/null 2>&1 || true
+    sudo apt-get install -y curl >/dev/null 2>&1 || {
+      warn "Failed to install curl; cannot download Catppuccin GTK installer."
+      return 0
+    }
+  fi
 
-  #
-  # 2. Use a temp directory rather than ~/src
-  #
+  # Use a temporary directory so we don't clutter the home folder
   local TMPDIR
   TMPDIR="$(mktemp -d)"
   if [[ ! -d "$TMPDIR" ]]; then
-    warn "Could not create temporary directory for Gogh installation."
+    warn "Could not create temporary directory for Catppuccin GTK installer."
     return 0
   fi
 
-  log " • Cloning Gogh into temporary directory: $TMPDIR/gogh"
-  if ! git clone --depth=1 https://github.com/Gogh-Co/Gogh.git "$TMPDIR/gogh" >/dev/null 2>&1; then
-    warn "Failed to clone the Gogh repository."
+  log " • Downloading Catppuccin GTK install.py (v1.0.3)…"
+  if ! curl -fsSL "https://raw.githubusercontent.com/catppuccin/gtk/v1.0.3/install.py" -o "$TMPDIR/install.py"; then
+    warn "Failed to download Catppuccin GTK installer."
     rm -rf "$TMPDIR"
     return 0
   fi
 
-  cd "$TMPDIR/gogh" || {
-    warn "Could not enter Gogh directory."
-    rm -rf "$TMPDIR"
-    return 0
-  }
-
-  #
-  # 3. Non-interactive install of Catppuccin Frappé
-  #
-  export TERMINAL=gnome-terminal
-  export GOGH_NONINTERACTIVE=1
-
-  # Look for the Catppuccin Frappé script (name can vary slightly over time)
-  local THEME_SCRIPT
-  THEME_SCRIPT="$(find "$TMPDIR/gogh/installs" -maxdepth 1 -type f -iname '*catppuccin*frappe*.sh' | head -n1)"
-
-  if [[ -z "$THEME_SCRIPT" ]]; then
-    warn "Could not find Catppuccin Frappé install script in Gogh."
-    rm -rf "$TMPDIR"
-    return 0
-  fi
-
-  log " • Running Gogh theme installer: $(basename "$THEME_SCRIPT")"
-  bash "$THEME_SCRIPT" </dev/null >/dev/null 2>&1
-  local exitcode=$?
-
-  if [[ $exitcode -ne 0 ]]; then
-    warn "Gogh theme script exited with status $exitcode — theme may not have been applied."
-  else
-    log " • Gogh Catppuccin Frappé installation completed."
-  fi
-
-  #
-  # 4. Cleanup
-  #
-  rm -rf "$TMPDIR"
-  log " • Cleaned up temporary Gogh directory."
-}
-
-set_terminal_theme() {
-  log "Setting up terminal theme (Gogh Catppuccin Frappe + JetBrains Mono)…"
-
-  if ! command -v gnome-terminal >/dev/null 2>&1; then
-    warn "gnome-terminal not found; skipping terminal theme configuration."
-    return 0
-  fi
-
-  #
-  # 1) Pre-reqs for Gogh (dconf, uuid, and gconf2 to avoid default_profile errors)
-  #
-  sudo apt-get update -y >/dev/null 2>&1 || true
-  sudo apt-get install -y dconf-cli uuid-runtime gconf2 >/dev/null 2>&1 || true
-
-  # Optional but helps with the "default_profile not a valid identifier" issue
-  dconf reset -f /org/gnome/terminal/legacy/profiles:/ >/dev/null 2>&1 || true
-
-  #
-  # 2) Clone (or reuse) Gogh repo
-  #
-  local GOGH_DIR="$HOME/.local/share/gogh"
-  mkdir -p "$(dirname "$GOGH_DIR")"
-
-  if [[ ! -d "$GOGH_DIR/.git" ]]; then
-    log " • Cloning Gogh into $GOGH_DIR…"
-    rm -rf "$GOGH_DIR"
-    if ! git clone --depth=1 https://github.com/Gogh-Co/Gogh.git "$GOGH_DIR" >/dev/null 2>&1; then
-      warn "Could not clone Gogh; skipping terminal theme."
-      return 0
+  (
+    cd "$TMPDIR" || exit 0
+    log " • Running: python3 install.py frappe blue"
+    if ! python3 install.py frappe blue >/dev/null 2>&1; then
+      warn "Catppuccin GTK install.py failed; theme may not have been installed."
+    else
+      log " • Catppuccin GTK theme installation completed."
     fi
+  )
+
+  # We know from manual test that the theme name shown in the UI is:
+  local THEME_NAME="catppuccin-frappe-blue-standard+default"
+
+  # Optionally verify it exists in ~/.themes or /usr/share/themes
+  if [[ ! -d "$HOME/.themes/$THEME_NAME" && ! -d "/usr/share/themes/$THEME_NAME" ]]; then
+    warn "Theme directory for $THEME_NAME not found in ~/.themes or /usr/share/themes, but attempting to apply it anyway."
+  fi
+
+  # Apply to Applications (GTK) and Desktop (Cinnamon)
+  if ! gsettings set org.cinnamon.desktop.interface gtk-theme "$THEME_NAME" 2>/dev/null; then
+    warn "Could not set GTK (Applications) theme to $THEME_NAME."
   else
-    log " • Reusing existing Gogh clone at $GOGH_DIR."
+    log " • Applications theme set to $THEME_NAME."
   fi
 
-  pushd "$GOGH_DIR" >/dev/null 2>&1 || {
-    warn "Could not enter Gogh directory; skipping terminal theme."
-    return 0
-  }
-
-  #
-  # 3) Non-interactive install of Catppuccin Frappe
-  #    We look for a theme script whose name includes both "catppuccin" and "frappe".
-  #
-  export TERMINAL=gnome-terminal
-  export GOGH_NONINTERACTIVE=1
-
-  local THEME_SCRIPT
-  THEME_SCRIPT="$(find installs -maxdepth 1 -type f -iname '*catppuccin*frappe*.sh' | head -n1)"
-
-  if [[ -z "$THEME_SCRIPT" ]]; then
-    warn "Could not locate Catppuccin Frappe theme script in Gogh; skipping Gogh theme apply."
+  if ! gsettings set org.cinnamon.theme name "$THEME_NAME" 2>/dev/null; then
+    warn "Could not set Cinnamon (Desktop) theme to $THEME_NAME."
   else
-    log " • Applying Gogh theme via: $THEME_SCRIPT"
-    bash "$THEME_SCRIPT" </dev/null >/dev/null 2>&1 || \
-      warn "Gogh theme script returned an error; colors may not have been applied."
+    log " • Desktop theme set to $THEME_NAME."
   fi
 
-  popd >/dev/null 2>&1 || true
-
-  #
-  # 4) Find the Catppuccin profile that Gogh created and set it as default + JetBrains Mono
-  #
-  if ! command -v dconf >/dev/null 2>&1; then
-    warn "dconf not available; cannot tweak terminal profile font."
-    return 0
-  fi
-
-  local profiles profile_id profile_path visible_name
-  profiles="$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null || true)"
-
-  # If no profiles yet (very fresh system), open a terminal once to force creation
-  if [[ -z "$profiles" ]]; then
-    gnome-terminal -- bash -lc 'exit' >/dev/null 2>&1 &
-    sleep 2
-    profiles="$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null || true)"
-  fi
-
-  local catppuccin_id=""
-  catppuccin_id="$(
-    python3 - <<'PY'
-import subprocess, unicodedata
-
-def dconf_read(path):
-    try:
-        out = subprocess.check_output(["dconf", "read", path], text=True).strip()
-        return out.strip("'") if out else ""
-    except Exception:
-        return ""
-
-# List profiles (each line looks like ':<uuid>/')
-try:
-    profiles_out = subprocess.check_output(
-        ["dconf", "list", "/org/gnome/terminal/legacy/profiles:/"],
-        text=True
-    )
-except Exception:
-    profiles_out = ""
-
-profiles = [p.strip("/:\n") for p in profiles_out.splitlines() if p.strip()]
-
-catppuccin_id = ""
-
-for pid in profiles:
-    name = dconf_read(f"/org/gnome/terminal/legacy/profiles:/:{pid}/visible-name")
-    if not name:
-        continue
-    # Normalize accents so 'Frappé' / 'Frappe' behave the same
-    norm = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii").lower()
-    if "catppuccin" in norm:
-        catppuccin_id = pid
-        break
-
-# Fallback: use default or first profile if no Catppuccin by name
-if not catppuccin_id:
-    default = dconf_read("/org/gnome/terminal/legacy/profiles:/default")
-    if default:
-        catppuccin_id = default
-    elif profiles:
-        catppuccin_id = profiles[0]
-
-print(catppuccin_id)
-PY
-  )"
-
-  if [[ -z "$catppuccin_id" ]]; then
-    warn "Could not determine any GNOME Terminal profile; skipping font tweak."
-    return 0
-  fi
-
-  profile_path="/org/gnome/terminal/legacy/profiles:/:$catppuccin_id/"
-
-  # Make that profile the default
-  dconf write /org/gnome/terminal/legacy/profiles:/default "'$catppuccin_id'" 2>/dev/null || true
-
-  # Apply JetBrains Mono 11 as the font
-  dconf write "${profile_path}use-system-font" "false" 2>/dev/null || true
-  dconf write "${profile_path}font" "'JetBrains Mono 11'" 2>/dev/null || \
-    warn "Could not set JetBrains Mono font on terminal profile $catppuccin_id."
-
-  log " • Terminal profile $catppuccin_id → Catppuccin (if Gogh succeeded) + JetBrains Mono 11."
+  rm -rf "$TMPDIR"
 }
 
 set_text_editor_theme() {
@@ -1400,8 +1250,6 @@ install_cinnamon_extensions() {
   install_blur_cinnamon_extension
   install_gtile_extension
   install_vscode_launcher_action
-
-  enable_blur_cinnamon_extension
 }
 
 install_blur_cinnamon_extension() {
@@ -1515,114 +1363,6 @@ install_vscode_launcher_action() {
   fi
 
   rm -rf "$TMPDIR"
-}
-
-enable_blur_cinnamon_extension() {
-  log "Enabling and configuring BlurCinnamon extension..."
-
-  if ! command -v gsettings >/dev/null 2>&1; then
-    warn "gsettings not available; cannot configure BlurCinnamon."
-    return 0
-  fi
-
-  #
-  # 1) Ensure BlurCinnamon is enabled as a Cinnamon extension
-  #
-  local CURRENT_EXT NEW_EXT
-  CURRENT_EXT="$(gsettings get org.cinnamon enabled-extensions 2>/dev/null || echo '[]')"
-
-  NEW_EXT="$(python3 - "$CURRENT_EXT" <<'PY'
-import ast, sys
-
-cur = sys.argv[1]
-try:
-    exts = ast.literal_eval(cur)
-except Exception:
-    exts = []
-
-if not isinstance(exts, list):
-    exts = []
-
-def ensure(lst, item):
-    if item not in lst:
-        lst.append(item)
-
-ensure(exts, "BlurCinnamon@klangman")
-
-print(str(exts).replace('"', "'"))
-PY
-)"
-
-  if gsettings set org.cinnamon enabled-extensions "$NEW_EXT" 2>/dev/null; then
-    log " • BlurCinnamon@klangman extension enabled."
-  else
-    warn " • Failed to update org.cinnamon::enabled-extensions for BlurCinnamon."
-  fi
-
-  #
-  # 2) Patch BlurCinnamon's spice config JSON (NO schema, so edit file directly).
-  #    We only touch a few 'value' fields:
-  #      - enable-popup-effects.value          -> True
-  #      - enable-panels-override.value        -> True
-  #      - enable-panels-effects.value         -> True (safe default)
-  #      - enable-panel-unique-settings.value  -> False
-  #      - panels-opacity.value                -> 0
-  #
-  local CFG_DIR="$HOME/.config/cinnamon/spices/BlurCinnamon@klangman"
-  local CFG_FILE="$CFG_DIR/BlurCinnamon@klangman.json"
-
-  if [[ ! -f "$CFG_FILE" ]]; then
-    warn " • BlurCinnamon config file not found at $CFG_FILE; skipping JSON tweaks."
-    return 0
-  fi
-
-  python3 - "$CFG_FILE" <<'PY'
-import json, os, sys
-
-path = sys.argv[1]
-
-try:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-except Exception:
-    # If we can't parse it safely, bail out rather than risk breaking the extension
-    sys.exit(1)
-
-if not isinstance(data, dict):
-    sys.exit(1)
-
-def set_value(key, new_val):
-    """Set the 'value' field on a key if it exists and is a dict."""
-    node = data.get(key)
-    if isinstance(node, dict):
-        node["value"] = new_val
-
-# General → Popup Menus ON
-set_value("enable-popup-effects", True)
-
-# Panels → Use unique effect settings for Panels ON
-set_value("enable-panels-override", True)
-
-# Panels effects themselves ON (safe default)
-set_value("enable-panels-effects", True)
-
-# Panels → DO NOT use per-panel unique settings (so global slider applies)
-set_value("enable-panel-unique-settings", False)
-
-# Panels → Dim/Colorize Background (percentage) = 0
-set_value("panels-opacity", 0.0)
-
-# Write file back
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2, sort_keys=True)
-PY
-
-  if [[ $? -eq 0 ]]; then
-    log " • BlurCinnamon config patched (Popup Menus ON, Panels override ON, Dim = 0%)."
-    log "   (If changes don't appear immediately, try restarting Cinnamon or logging out/in.)"
-  else
-    warn " • Failed to patch BlurCinnamon config JSON; leaving it unchanged."
-  fi
 }
 
 # =============================================================================
