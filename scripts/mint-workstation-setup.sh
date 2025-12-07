@@ -896,8 +896,8 @@ set_system_theme() {
 
   mkdir -p "$THEMES_DIR"
 
-  # Use the first directory inside the extracted archive as the source
-  local SRC_DIR
+# Use the first directory inside the extracted archive as the source
+  local SRC_DIR THEME_NAME
   SRC_DIR="$(find "$TMPDIR/extracted" -maxdepth 1 -mindepth 1 -type d | head -n1)" || true
   if [[ -z "$SRC_DIR" ]]; then
     warn "Could not find extracted theme directory; skipping."
@@ -905,9 +905,13 @@ set_system_theme() {
     return 0
   fi
 
-  local THEME_NAME="Catppuccin-Frappe-Standard-Blue-Dark"
+  # Derive THEME_NAME from the actual extracted directory name
+  THEME_NAME="$(basename "$SRC_DIR")"
+
+  mkdir -p "$THEMES_DIR"
   rm -rf "$THEMES_DIR/$THEME_NAME"
-  if ! cp -r "$SRC_DIR" "$THEMES_DIR/$THEME_NAME"; then
+
+  if ! cp -r "$SRC_DIR" "$THEMES_DIR/"; then
     warn "Could not copy theme into $THEMES_DIR; skipping."
     rm -rf "$TMPDIR"
     return 0
