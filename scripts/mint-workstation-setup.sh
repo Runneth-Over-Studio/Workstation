@@ -997,6 +997,64 @@ set_system_theme() {
   fi
 
   rm -rf "$TMPDIR"
+
+  # Update Cinnamon’s preview thumbnails for the current theme
+  update_catppuccin_theme_thumbnails
+}
+
+update_catppuccin_theme_thumbnails() {
+  log "Updating Cinnamon theme preview thumbnails for Catppuccin…"
+
+  local THEME_NAME="catppuccin-frappe-blue-standard+default"
+
+  # Where Catppuccin likely lives
+  local BASE1="$HOME/.local/share/themes/$THEME_NAME"
+  local BASE2="$HOME/.themes/$THEME_NAME"
+  local SRC_CIN SRC_GTK
+
+  # Find cinnamon thumbnail.png
+  if [[ -f "$BASE1/cinnamon/thumbnail.png" ]]; then
+    SRC_CIN="$BASE1/cinnamon/thumbnail.png"
+  elif [[ -f "$BASE2/cinnamon/thumbnail.png" ]]; then
+    SRC_CIN="$BASE2/cinnamon/thumbnail.png"
+  fi
+
+  # Find gtk-3.0 thumbnail.png
+  if [[ -f "$BASE1/gtk-3.0/thumbnail.png" ]]; then
+    SRC_GTK="$BASE1/gtk-3.0/thumbnail.png"
+  elif [[ -f "$BASE2/gtk-3.0/thumbnail.png" ]]; then
+    SRC_GTK="$BASE2/gtk-3.0/thumbnail.png"
+  fi
+
+  # System thumbnail dirs used by cs_themes.py
+  local DEST_CIN_DIR="/usr/share/cinnamon/thumbnails/cinnamon"
+  local DEST_GTK_DIR="/usr/share/cinnamon/thumbnails/gtk-3.0"
+
+  # Copy cinnamon thumbnail if we found one
+  if [[ -n "$SRC_CIN" && -f "$SRC_CIN" ]]; then
+    if [[ -d "$DEST_CIN_DIR" ]]; then
+      log " • Copying Cinnamon theme thumbnail from $SRC_CIN → $DEST_CIN_DIR/thumbnail.png"
+      sudo cp "$SRC_CIN" "$DEST_CIN_DIR/thumbnail.png" 2>/dev/null || \
+        warn "Failed to copy Cinnamon thumbnail into $DEST_CIN_DIR."
+    else
+      warn "Cinnamon thumbnails directory $DEST_CIN_DIR not found; skipping Cinnamon preview."
+    fi
+  else
+    warn "Catppuccin Cinnamon thumbnail.png not found under $BASE1 or $BASE2."
+  fi
+
+  # Copy GTK thumbnail if we found one
+  if [[ -n "$SRC_GTK" && -f "$SRC_GTK" ]]; then
+    if [[ -d "$DEST_GTK_DIR" ]]; then
+      log " • Copying GTK theme thumbnail from $SRC_GTK → $DEST_GTK_DIR/thumbnail.png"
+      sudo cp "$SRC_GTK" "$DEST_GTK_DIR/thumbnail.png" 2>/dev/null || \
+        warn "Failed to copy GTK thumbnail into $DEST_GTK_DIR."
+    else
+      warn "GTK thumbnails directory $DEST_GTK_DIR not found; skipping GTK preview."
+    fi
+  else
+    warn "Catppuccin GTK thumbnail.png not found under $BASE1 or $BASE2."
+  fi
 }
 
 set_text_editor_theme() {
