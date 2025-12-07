@@ -968,12 +968,22 @@ set_system_theme() {
   # We know from manual test that the theme name shown in the UI is:
   local THEME_NAME="catppuccin-frappe-blue-standard+default"
 
-  # Optionally verify it exists in ~/.themes or /usr/share/themes
-  if [[ ! -d "$HOME/.themes/$THEME_NAME" && ! -d "/usr/share/themes/$THEME_NAME" ]]; then
-    warn "Theme directory for $THEME_NAME not found in ~/.themes or /usr/share/themes, but attempting to apply it anyway."
+  # Try to find a matching theme directory (allowing suffixes like -xhdpi)
+  local THEME_DIR=""
+  if [[ -d "$HOME/.themes" ]]; then
+    THEME_DIR="$(find "$HOME/.themes" -maxdepth 1 -type d -name "${THEME_NAME}*" | head -n1 || true)"
+  fi
+  if [[ -z "$THEME_DIR" && -d "/usr/share/themes" ]]; then
+    THEME_DIR="$(find "/usr/share/themes" -maxdepth 1 -type d -name "${THEME_NAME}*" | head -n1 || true)"
   fi
 
-  # Apply to Applications (GTK) and Desktop (Cinnamon)
+  if [[ -n "$THEME_DIR" ]]; then
+    log " • Found Catppuccin theme directory: $(basename "$THEME_DIR")"
+  else
+    warn "Catppuccin theme directory starting with '$THEME_NAME' not found in ~/.themes or /usr/share/themes, but attempting to apply it anyway."
+  fi
+
+  # Apply to Applications (GTK) and Desktop (Cinnamon) using the *theme name* as seen in the UI
   if ! gsettings set org.cinnamon.desktop.interface gtk-theme "$THEME_NAME" 2>/dev/null; then
     warn "Could not set GTK (Applications) theme to $THEME_NAME."
   else
