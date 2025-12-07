@@ -775,55 +775,45 @@ cook_rice() {
 }
 
 set_wallpaper() {
-  log "Configuring wallpaper…"
+  log "Setting wallpaper..."
 
   local WALL_DIR="$HOME/Pictures/Wallpapers"
   local WALL_URL="https://raw.githubusercontent.com/Runneth-Over-Studio/Workstation/refs/heads/main/content/wallpapers/Gnome-Desktop-851-Right-4K-No-Logo.jpg"
-  local WALL_PATH="$WALL_DIR/Gnome-Desktop-851-Right-4K-No-Logo.jpg"
+  local WALL_FILE="$WALL_DIR/Gnome-Desktop-851-Right-4K-No-Logo.jpg"
 
   mkdir -p "$WALL_DIR"
 
-  if ! curl -fsSL "$WALL_URL" -o "$WALL_PATH"; then
-    warn "Failed to download wallpaper from $WALL_URL; skipping wallpaper configuration."
-    return 0
-  fi
-
-  if ! command -v gsettings >/dev/null 2>&1; then
-    warn "gsettings not found; skipping wallpaper configuration."
-    return 0
-  fi
-
-  # Prefer Cinnamon schema, fall back to GNOME if needed
-  local SCHEMA=""
-  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.background'; then
-    SCHEMA="org.cinnamon.desktop.background"
-  elif gsettings list-schemas | grep -qx 'org.gnome.desktop.background'; then
-    SCHEMA="org.gnome.desktop.background"
-  fi
-
-  if [[ -z "$SCHEMA" ]]; then
-    warn "No compatible background schema (Cinnamon or GNOME) found; skipping wallpaper configuration."
-    return 0
-  fi
-
-  local URI="file://$WALL_PATH"
-
-  if ! gsettings set "$SCHEMA" picture-uri "$URI" 2>/dev/null; then
-    warn "Failed to set wallpaper URI on $SCHEMA."
+  if curl -fsSL "$WALL_URL" -o "$WALL_FILE"; then
+    log "Downloaded wallpaper to $WALL_FILE"
   else
-    log " • Wallpaper set via $SCHEMA"
+    warn "Failed to download wallpaper; skipping wallpaper configuration."
+    return 0
   fi
 
-  # Set Picture Aspect → stretched if supported
-  if gsettings list-keys "$SCHEMA" | grep -qx 'picture-options'; then
-    if gsettings set "$SCHEMA" picture-options 'stretched' 2>/dev/null; then
-      log " • Wallpaper picture aspect → stretched"
-    else
-      warn "Failed to set picture-options to stretched."
-    fi
+  local URI="file://$WALL_FILE"
+
+  # Prefer Cinnamon background schema
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.background'; then
+    gsettings set org.cinnamon.desktop.background picture-uri "$URI" 2>/dev/null || \
+      warn "Failed to set Cinnamon picture-uri."
+    gsettings set org.cinnamon.desktop.background picture-options 'stretched' 2>/dev/null || \
+      warn "Failed to set Cinnamon picture-options to stretched."
+    log " • Wallpaper set via org.cinnamon.desktop.background (stretched)."
+    return 0
   fi
+
+  # Fallback to GNOME background if Cinnamon not present (unlikely on Mint Cinnamon)
+  if gsettings list-schemas | grep -qx 'org.gnome.desktop.background'; then
+    gsettings set org.gnome.desktop.background picture-uri "$URI" 2>/dev/null || \
+      warn "Failed to set GNOME picture-uri."
+    gsettings set org.gnome.desktop.background picture-options 'stretched' 2>/dev/null || \
+      warn "Failed to set GNOME picture-options to stretched."
+    log " • Wallpaper set via org.gnome.desktop.background (stretched)."
+    return 0
+  fi
+
+  warn "No compatible background schema found; wallpaper not applied."
 }
-
 
 set_mint_theme() {
   # gsettings is available in Cinnamon (and also used for Mint theming)
@@ -872,26 +862,17 @@ set_fonts() {
     return 0
   fi
 
-  #
-  # Default + Desktop + Document fonts → Inter Regular
-  #
+  # Global UI font
   gsettings set org.cinnamon.desktop.interface font-name 'Inter 10' 2>/dev/null || \
-    warn "Could not set interface (default/desktop) font to Inter."
+    warn "Could not set interface font to Inter."
 
-  gsettings set org.cinnamon.desktop.interface document-font-name 'Inter 10' 2>/dev/null || \
-    warn "Could not set document font to Inter."
-
-  #
-  # Window title font → Inter Medium
-  #
-  gsettings set org.cinnamon.desktop.wm.preferences titlebar-font 'Inter Medium 10' 2>/dev/null || \
-    warn "Could not set window title font to Inter Medium."
-
-  #
-  # Monospace → JetBrains Mono Regular
-  #
-  gsettings set org.cinnamon.desktop.interface monospace-font-name 'JetBrains Mono 10' 2>/dev/null || \
-    warn "Could not set monospace font to JetBrains Mono."
+  # Window title font (this one is valid on your system)
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.wm.preferences'; then
+    if gsettings list-keys org.cinnamon.desktop.wm.preferences | grep -qx 'titlebar-font'; then
+      gsettings set org.cinnamon.desktop.wm.preferences titlebar-font 'Inter Medium 10' 2>/dev/null || \
+        warn "Could not set window title font to Inter Medium."
+    fi
+  fi
 }
 
 set_themes() {
@@ -961,76 +942,69 @@ set_system_theme() {
 }
 
 set_terminal_theme() {
-  log "Configuring terminal theme…"
+  log "Setting up terminal theme (Gogh Catppuccin Frappe + JetBrains Mono)…"
 
   if ! command -v gnome-terminal >/dev/null 2>&1; then
     warn "gnome-terminal not found; skipping terminal theme configuration."
     return 0
   fi
 
-  # Needed by Gogh for gnome-terminal profiles
-  sudo apt-get install -y dconf-cli uuid-runtime || true
+  # 1) Install dconf deps needed by Gogh
+  sudo apt-get install -y dconf-cli uuid-runtime >/dev/null 2>&1 || true
 
-  local TMPDIR
+  # 2) Run Gogh's Catppuccin Frappe installer (non-interactively)
+  #    This uses apply-colors.sh under the hood and applies the color scheme.
+  local TMPDIR BASE_URL
   TMPDIR="$(mktemp -d)" || {
     warn "Could not create temp directory for Gogh; skipping terminal theme."
     return 0
   }
+  BASE_URL="https://raw.githubusercontent.com/Gogh-Co/Gogh/master"
 
-  local BASE_URL="https://raw.githubusercontent.com/Gogh-Co/Gogh/master"
-
-  # Download apply-colors helper and the Catppuccin Frappe installer script
+  # Download apply-colors helper and Catppuccin Frappe installer
   if ! curl -fsSL "$BASE_URL/apply-colors.sh" -o "$TMPDIR/apply-colors.sh"; then
-    warn "Failed to download Gogh apply-colors.sh; skipping terminal theme."
+    warn "Failed to download Gogh apply-colors.sh; skipping terminal color scheme."
     rm -rf "$TMPDIR"
     return 0
   fi
 
   if ! curl -fsSL "$BASE_URL/installs/catppuccin-frappe.sh" -o "$TMPDIR/catppuccin-frappe.sh"; then
-    warn "Failed to download Gogh Catppuccin Frappe installer; skipping terminal theme."
+    warn "Failed to download Gogh Catppuccin Frappe installer; skipping terminal color scheme."
     rm -rf "$TMPDIR"
     return 0
   fi
 
   chmod +x "$TMPDIR"/apply-colors.sh "$TMPDIR"/catppuccin-frappe.sh
 
-  # Run the theme installer in the directory where apply-colors.sh lives
   (
     cd "$TMPDIR" || exit 0
+    # Tell Gogh which terminal to target; it will call apply-colors.sh
     TERMINAL=gnome-terminal bash ./catppuccin-frappe.sh
-  ) || warn "Gogh Catppuccin Frappe install script failed; theme might not be applied."
-
-  # Try to find the new profile and set it as default + set JetBrains Mono 11
-  if command -v dconf >/dev/null 2>&1; then
-    local PROFILE_IDS PROFILE_ID
-    PROFILE_IDS=$(dconf list /org/gnome/terminal/legacy/profiles:/ 2>/dev/null | tr -d '/') || true
-
-    for id in $PROFILE_IDS; do
-      local NAME
-      NAME=$(dconf read "/org/gnome/terminal/legacy/profiles:/:$id/visible-name" 2>/dev/null | tr -d "'") || true
-      if [[ "$NAME" == "Catppuccin Frappe" ]]; then
-        PROFILE_ID="$id"
-        break
-      fi
-    done
-
-    if [[ -n "${PROFILE_ID:-}" ]]; then
-      # Make this profile the default
-      dconf write /org/gnome/terminal/legacy/profiles:/default "'$PROFILE_ID'" 2>/dev/null || \
-        warn "Could not set Catppuccin Frappe as the default terminal profile."
-
-      # Disable system font and set JetBrains Mono Regular 11
-      dconf write "/org/gnome/terminal/legacy/profiles:/:$PROFILE_ID/use-system-font" "false" 2>/dev/null || true
-      dconf write "/org/gnome/terminal/legacy/profiles:/:$PROFILE_ID/font" "'JetBrains Mono Regular 11'" 2>/dev/null || \
-        warn "Could not set JetBrains Mono font in gnome-terminal."
-    else
-      warn "Could not locate a 'Catppuccin Frappe' terminal profile; leaving the default profile unchanged."
-    fi
-  else
-    warn "dconf not available; cannot set default terminal profile."
-  fi
+  ) || warn "Gogh Catppuccin Frappe install script failed; colors may not have applied correctly."
 
   rm -rf "$TMPDIR"
+
+  # 3) Set JetBrains Mono 11 on the DEFAULT profile, regardless of its visible-name
+  if command -v dconf >/dev/null 2>&1; then
+    local def prof_path
+
+    # Read the default profile ID, e.g. 'b1dcc9dd-5262-4d8d-a863-c897e6d979b9'
+    def="$(dconf read /org/gnome/terminal/legacy/profiles:/default 2>/dev/null | tr -d "'")"
+
+    if [[ -n "$def" ]]; then
+      prof_path="/org/gnome/terminal/legacy/profiles:/:$def/"
+
+      dconf write "${prof_path}use-system-font" "false" 2>/dev/null || true
+      dconf write "${prof_path}font" "'JetBrains Mono 11'" 2>/dev/null || \
+        warn "Could not set JetBrains Mono font on terminal profile $def."
+
+      log " • Terminal profile $def font → JetBrains Mono 11 (system font disabled)."
+    else
+      warn "Could not read default GNOME Terminal profile; skipped font tweak."
+    fi
+  else
+    warn "dconf not available; cannot tweak terminal profile font."
+  fi
 }
 
 set_text_editor_theme() {
@@ -1145,135 +1119,105 @@ tweak_file_management_prefs() {
 tweak_behavior_prefs() {
   log "Tweaking behavior prefs..."
 
-  # 1) Center windows
-  local centered=false
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not available; skipping behavior tweaks."
+    return 0
+  fi
 
+  #
+  # 1) Center new windows (Cinnamon / muffin)
+  #
   if gsettings list-schemas | grep -qx 'org.cinnamon.muffin'; then
     if gsettings list-keys org.cinnamon.muffin | grep -qx 'placement-mode'; then
       if gsettings set org.cinnamon.muffin placement-mode 'center' 2>/dev/null; then
         log " • Window placement → center (org.cinnamon.muffin::placement-mode)"
-        centered=true
       fi
-    fi
-    if [[ "$centered" == false ]] && gsettings list-keys org.cinnamon.muffin | grep -qx 'center-new-windows'; then
+    elif gsettings list-keys org.cinnamon.muffin | grep -qx 'center-new-windows'; then
       if gsettings set org.cinnamon.muffin center-new-windows true 2>/dev/null; then
         log " • Window placement → center (org.cinnamon.muffin::center-new-windows)"
-        centered=true
       fi
     fi
+  else
+    warn " • org.cinnamon.muffin schema not present; skipping window-centering tweak."
   fi
 
-  if [[ "$centered" == false ]] && gsettings list-schemas | grep -qx 'org.gnome.mutter'; then
-    if gsettings list-keys org.gnome.mutter | grep -qx 'center-new-windows'; then
-      gsettings set org.gnome.mutter center-new-windows true 2>/dev/null && \
-        log " • Window placement → center (org.gnome.mutter::center-new-windows)"
-      centered=true
-    fi
-  fi
+  #
+  # 2) Remove Corner Bar applet from panel
+  #
+  if gsettings list-schemas | grep -qx 'org.cinnamon'; then
+    local cur new
+    cur="$(gsettings get org.cinnamon enabled-applets 2>/dev/null || echo '[]')"
 
-  [[ "$centered" == false ]] && warn " • Could not find a window-centering key on this system (skipped)."
-
-  # 2) Remove Corner Bar (show desktop) from bottom-right panel corner
-  if command -v gsettings >/dev/null 2>&1 && \
-     gsettings list-schemas | grep -qx 'org.cinnamon' && \
-     gsettings list-keys org.cinnamon | grep -qx 'enabled-applets'; then
-
-    local CURRENT_APPLETS NEW_APPLETS
-    CURRENT_APPLETS="$(gsettings get org.cinnamon enabled-applets 2>/dev/null || echo "[]")"
-
-    NEW_APPLETS="$(python3 - "$CURRENT_APPLETS" <<'PY'
+    new="$(python3 - "$cur" <<'PY'
 import ast, sys
-
 cur = sys.argv[1]
 try:
-    arr = ast.literal_eval(cur)
+    applets = ast.literal_eval(cur)
 except Exception:
-    arr = []
-
-if not isinstance(arr, list):
-    arr = []
-
-# Corner Bar applet UUID is cornerbar@cinnamon.org
-filtered = [x for x in arr if 'cornerbar@cinnamon.org' not in str(x)]
-
-print(str(filtered).replace('"', "'"))
+    applets = []
+applets = [a for a in applets if 'cornerbar@cinnamon.org' not in a]
+print(applets)
 PY
 )"
-
-    if [[ -n "$NEW_APPLETS" && "$NEW_APPLETS" != "$CURRENT_APPLETS" ]]; then
-      if gsettings set org.cinnamon enabled-applets "$NEW_APPLETS" 2>/dev/null; then
-        log " • Removed Corner Bar applet from panel (org.cinnamon::enabled-applets)"
-      else
-        warn " • Failed to update enabled applets when removing Corner Bar."
-      fi
+    if gsettings set org.cinnamon enabled-applets "$new" 2>/dev/null; then
+      log " • Corner Bar applet removed from panel."
     else
-      log " • Corner Bar applet not present in enabled applets (nothing to remove)."
+      warn " • Failed to update enabled-applets for Corner Bar removal."
     fi
   else
-    warn " • Could not adjust Corner Bar applet (org.cinnamon::enabled-applets not available)."
+    warn " • org.cinnamon schema not present; skipping Corner Bar tweak."
   fi
 
-  # 3) Enable top-left Hot Corner → Show all workspaces on hover
-  # Cinnamon stores hot corner config in org.cinnamon hotcorner-layout as:
-  #   ['func:hover:icon', '...', '...', '...']
-  # Order: top-left, top-right, bottom-left, bottom-right.
-  # "scale" == show all workspaces, "expo" == show all windows, "desktop" == show desktop. :contentReference[oaicite:1]{index=1}
-  if command -v gsettings >/dev/null 2>&1 && \
-     gsettings list-schemas | grep -qx 'org.cinnamon' && \
-     gsettings list-keys org.cinnamon | grep -qx 'hotcorner-layout'; then
+  #
+  # 3) Hot corner: top-left → Show all workspaces
+  #    (expo = all workspaces, scale = all windows)
+  #
+  if gsettings list-schemas | grep -qx 'org.cinnamon'; then
+    local cur hc
+    cur="$(gsettings get org.cinnamon hotcorner-layout 2>/dev/null || echo "['desktop:false:0','desktop:false:0','desktop:false:0','desktop:false:0']")"
 
-    local HCURRENT HNEW
-    HCURRENT="$(gsettings get org.cinnamon hotcorner-layout 2>/dev/null || echo "[]")"
-
-    HNEW="$(python3 - "$HCURRENT" <<'PY'
+    hc="$(python3 - "$cur" <<'PY'
 import ast, sys
-
 cur = sys.argv[1]
 try:
-    layout = ast.literal_eval(cur)
+    corners = ast.literal_eval(cur)
 except Exception:
-    layout = []
+    corners = ['desktop:false:0'] * 4
 
-# Ensure we have a list of four entries (one per corner)
-if not isinstance(layout, list) or len(layout) != 4:
-    # Sensible default: top-left shows all workspaces, others off
-    layout = ["scale:true:0", "scale:false:0", "scale:false:0", "desktop:false:0"]
-else:
-    # Update top-left entry to "scale:true:<iconIndex>"
-    entry = str(layout[0])
-    parts = entry.split(':')
-    if len(parts) < 3:
-        parts = ['scale', 'true', '0']
-    else:
-        parts[0] = 'scale'   # show all workspaces
-        parts[1] = 'true'    # enabled on hover
-        # parts[2] = icon index (leave as-is if present)
-    layout[0] = ':'.join(parts[:3])
+# Ensure exactly 4 entries
+if len(corners) < 4:
+    corners += ['desktop:false:0'] * (4 - len(corners))
+elif len(corners) > 4:
+    corners = corners[:4]
 
-print(str(layout).replace('"', "'"))
+# Top-left: expo:true:0 => Show all workspaces
+corners[0] = 'expo:true:0'
+print(corners)
 PY
 )"
+    if gsettings set org.cinnamon hotcorner-layout "$hc" 2>/dev/null; then
+      log " • Hot corner (top-left) → Show all workspaces (expo)."
+    else
+      warn " • Failed to update hotcorner-layout."
+    fi
+  fi
 
-    if [[ -n "$HNEW" ]]; then
-      if gsettings set org.cinnamon hotcorner-layout "$HNEW" 2>/dev/null; then
-        log " • Hot corner (top-left) → Show all workspaces on hover (org.cinnamon::hotcorner-layout)"
+  #
+  # 4) Alt-Tab → Timeline (3D)
+  #
+  if gsettings list-schemas | grep -qx 'org.cinnamon'; then
+    if gsettings list-keys org.cinnamon | grep -qx 'alttab-switcher-style'; then
+      if gsettings set org.cinnamon alttab-switcher-style 'timeline' 2>/dev/null; then
+        log " • Alt-Tab switcher → Timeline (3D)."
       else
-        warn " • Failed to apply hot corner layout."
+        warn " • Failed to set Alt-Tab switcher style to 'timeline'."
       fi
     fi
-  else
-    warn " • Could not configure hot corner layout (org.cinnamon::hotcorner-layout not available)."
   fi
 
-  # 4) Alt-Tab switcher style → Timeline (3D)
-  if ! gsettings set org.cinnamon.desktop.wm.preferences switcher-style 'timeline' 2>/dev/null; then
-    warn " • Could not set Alt-Tab switcher style to Timeline (3D)."
-  else
-    log " • Alt-Tab switcher style → Timeline (3D)"
-  fi
-
-  # TODO: Open menu on hover.
+  # TODO: 5) Open menu on hover.
 }
+
 
 
 install_neofetch() {
