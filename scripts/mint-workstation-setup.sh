@@ -663,6 +663,8 @@ cook_rice() {
   tweak_behavior_prefs
   install_neofetch
   install_cinnamon_extensions
+
+  refresh_cinnamon_shell
 }
 
 set_wallpaper() {
@@ -1324,6 +1326,21 @@ install_vscode_launcher_action() {
 
   rm -rf "$TMPDIR"
 }
+
+refresh_cinnamon_shell() {
+  log "Refreshing Cinnamon so panel/app configs take effect…"
+
+  # Only do this in an interactive graphical session
+  if [[ -z "$DISPLAY" ]]; then
+    warn "No DISPLAY detected; skipping Cinnamon refresh."
+    return 0
+  fi
+
+  # Try to restart Cinnamon in-place. This is basically what Alt+F2, 'r' does.
+  nohup cinnamon --replace >/dev/null 2>&1 &
+  log " • Cinnamon restart requested (cinnamon --replace). Panel should reload with new settings."
+}
+
 
 # =============================================================================
 #  MAIN RUNNER
