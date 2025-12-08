@@ -514,42 +514,49 @@ PY
 configure_brave_theme() {
   log "Configuring Brave browser theme…"
 
-  local PREF="$HOME/.config/BraveSoftware/Brave-Browser/Default/Preferences"
+  local BRAVE_DIR="$HOME/.config/BraveSoftware/Brave-Browser/Default"
+  local PREF="$BRAVE_DIR/Preferences"
 
+  # Ensure the profile directory exists
+  mkdir -p "$BRAVE_DIR"
+
+  # If Preferences doesn't exist yet, create a minimal JSON structure
   if [[ ! -f "$PREF" ]]; then
-    warn "Brave Preferences file not found; has Brave been launched at least once?"
-    return 0
+    log " • Brave Preferences not found; creating a new one."
+    echo '{}' > "$PREF"
   fi
 
   python3 - "$PREF" <<'PY'
-import json, sys
+import json, sys, os
 
 path = sys.argv[1]
 
-# Load existing preferences
+# Load existing preferences (or {} if it's empty/invalid)
 try:
     with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+        content = f.read().strip() or "{}"
+        data = json.loads(content)
 except Exception:
-    sys.exit(1)
+    data = {}
 
 if not isinstance(data, dict):
-    sys.exit(1)
+    data = {}
 
 browser = data.setdefault("browser", {})
 theme = browser.setdefault("theme", {})
 
-# Dark theme + Blue color (values observed from your manual config)
+# Values observed from your manual config:
+#   "color_scheme": 2  -> Dark
+#   "color_variant": 1 -> Blue
 theme["color_scheme"] = 2
 theme["color_variant"] = 1
 
-# Keep user_color as-is if present; don't create/modify it otherwise
+# Preserve user_color if it exists; don't touch it otherwise
 
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, sort_keys=True)
 PY
 }
-
 
 configure_vscode() {
   install_vscode_extensions
