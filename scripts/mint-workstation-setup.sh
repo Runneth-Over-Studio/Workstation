@@ -435,6 +435,7 @@ configure_bleachbit() {
 configure_browsers() {
   set_brave_default_browser
   pin_brave_to_panel_cinnamon
+  configure_brave_theme
 }
 
 set_brave_default_browser() {
@@ -509,6 +510,46 @@ PY
     warn " • Failed to update grouped-window-list pinned apps."
   fi
 }
+
+configure_brave_theme() {
+  log "Configuring Brave browser theme…"
+
+  local PREF="$HOME/.config/BraveSoftware/Brave-Browser/Default/Preferences"
+
+  if [[ ! -f "$PREF" ]]; then
+    warn "Brave Preferences file not found; has Brave been launched at least once?"
+    return 0
+  fi
+
+  python3 - "$PREF" <<'PY'
+import json, sys
+
+path = sys.argv[1]
+
+# Load existing preferences
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(1)
+
+if not isinstance(data, dict):
+    sys.exit(1)
+
+browser = data.setdefault("browser", {})
+theme = browser.setdefault("theme", {})
+
+# Dark theme + Blue color (values observed from your manual config)
+theme["color_scheme"] = 2
+theme["color_variant"] = 1
+
+# Keep user_color as-is if present; don't create/modify it otherwise
+
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+PY
+}
+
 
 configure_vscode() {
   install_vscode_extensions
