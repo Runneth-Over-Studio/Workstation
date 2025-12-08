@@ -515,6 +515,11 @@ PY
 configure_brave_preferences() {
   log "Writing Brave initial_preferences…"
 
+  # https://www.chromium.org/administrators/configuring-other-preferences/
+  # https://www.chromium.org/administrators/pre-installed-extensions/
+  
+  # TODO: Right now the extension theme does not get installed. There is known bug that might be related: https://issues.chromium.org/issues/432502916
+
   local PREF_FILE="/opt/brave.com/brave/initial_preferences"
 
   sudo bash -c "cat > '$PREF_FILE' <<'EOF'
@@ -527,10 +532,10 @@ configure_brave_preferences() {
         \"location\": 1,
         \"manifest\": {
           \"key\": \"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiNFnIjbGyRxkBL9VQA71r9NP+37GYIVXMDX3CAFRSehP4+Fne1HVfcgRZP5sJ/2TDWODcCgiX62ZFFUD15axWh2D6X+Ga5+bFokwN7/HCdwXMpUL2dNcj5Kit5FVwt1+YYW5MaZPZwbMVrl0OrSaHH0sH2dMY4H3TP3F/JQceKdhMYs0stG7oYLez7MQkmOk7zwpw3uZOBB+ey6wlIMwMB/Lw6UR3lrijSzLXrIOc+UpZZ3ptD1mN4evQZk6gl/knmkrv7/prC8M14Rt4up2TlrGjULw70ZdfNzSBJyGVLfIRpdEr44UmVyg1noxTcY/RSrIO+Om7+XAC3d+/+RG4wIDAQAB\",
-          \"name\": \"Catppuccin Chrome Theme - Frappe\",
+          \"name\": \"Catppuccin Chrome Theme - Frappe\", 
+          \"update_url\": \"https://clients2.google.com/service/update2/crx\",
           \"version\": \"0.0\",
-          \"manifest_version\": 3,
-          \"update_url\": \"https://clients2.google.com/service/update2/crx\"
+          \"manifest_version\": 3
         },
         \"path\": \"olhelnoplefjdmncknfphenjclimckaf\\\\0.0\",
         \"state\": 1
