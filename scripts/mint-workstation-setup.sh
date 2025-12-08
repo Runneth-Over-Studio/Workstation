@@ -511,7 +511,7 @@ PY
   fi
 }
 
-cconfigure_brave_theme() {
+configure_brave_theme() {
   log "Configuring Brave browser theme…"
 
   local BRAVE_DIR="$HOME/.config/BraveSoftware/Brave-Browser/Default"
