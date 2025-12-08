@@ -545,11 +545,8 @@ if not isinstance(data, dict):
 browser = data.setdefault("browser", {})
 theme = browser.setdefault("theme", {})
 
-# Dark + Blue, matching manual settings
-# 2 = Dark, 1 = Blue, user_color is the ARGB value Brave wrote for Blue.
+# 2 = Dark
 theme["color_scheme"] = 2
-theme["color_variant"] = 1
-theme["user_color"] = -7558172
 
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, sort_keys=True)
@@ -802,6 +799,7 @@ set_themes() {
   set_terminal_theme
   set_system_theme
   set_text_editor_theme
+  set_brave_theme
 }
 
 set_terminal_theme() {
@@ -1030,6 +1028,53 @@ set_text_editor_theme() {
     fi
   else
     warn "Xed gsettings schema not found; Catppuccin theme installed but not auto-activated."
+  fi
+}
+
+set_brave_theme() {
+  log "Installing Catppuccin Frappé Chrome Theme extension (managed)…"
+
+  local POLICY_DIR="/etc/opt/brave/policies/managed"
+  local POLICY_FILE="$POLICY_DIR/brave-policies.json"
+
+  local EXT_ID="olhelnoplefjdmncknfphenjclimckaf"
+  local UPDATE_URL="https://clients2.google.com/service/update2/crx"
+  local ENTRY="${EXT_ID};${UPDATE_URL}"
+
+  sudo mkdir -p "$POLICY_DIR"
+
+  # Use Python to merge/append ExtensionInstallForcelist safely
+  sudo python3 - <<PY
+import json, os
+
+policy_path = r"$POLICY_FILE"
+entry = r"$ENTRY"
+
+data = {}
+if os.path.exists(policy_path):
+    try:
+        with open(policy_path, "r", encoding="utf-8") as f:
+            content = f.read().strip() or "{}"
+            data = json.loads(content)
+    except Exception:
+        data = {}
+
+if not isinstance(data, dict):
+    data = {}
+
+lst = data.setdefault("ExtensionInstallForcelist", [])
+if entry not in lst:
+    lst.append(entry)
+
+with open(policy_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+PY
+
+  if [[ $? -eq 0 ]]; then
+    log " • Catppuccin Frappé theme extension added to Brave's managed forcelist."
+    log "   It will auto-install when Brave next starts."
+  else
+    warn "Failed to update Brave managed policies for Catppuccin theme."
   fi
 }
 
