@@ -397,7 +397,7 @@ install_brave_browser() {
 configure_apps() {
   configure_libreoffice
   configure_bleachbit
-  configure_browsers
+  configure_browser
   configure_vscode
   configure_favorites
 }
@@ -432,10 +432,11 @@ configure_bleachbit() {
   log "BleachBit defaults written to $CFG_FILE (backup kept if one existed)."
 }
 
-configure_browsers() {
+configure_browser() {
   set_brave_default_browser
   pin_brave_to_panel_cinnamon
   configure_brave_theme
+  configure_brave_initial_preferences
 }
 
 set_brave_default_browser() {
@@ -552,6 +553,43 @@ with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, sort_keys=True)
 PY
 }
+
+configure_brave_initial_preferences() {
+  log "Writing Brave initial_preferences…"
+
+  local PREF_FILE="/etc/opt/brave/initial_preferences"
+
+  sudo bash -c "cat > '$PREF_FILE' <<'EOF'
+{
+  \"first_run_tabs\": [
+    \"https://runnethoverstudio.com/\"
+  ],
+  \"extensions\": {
+    \"settings\": {
+      \"olhelnoplefjdmncknfphenjclimckaf\": {
+        \"location\": 1,
+        \"manifest\": {
+          \"key\": \"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiNFnIjbGyRxkBL9VQA71r9NP+37GYIVXMDX3CAFRSehP4+Fne1HVfcgRZP5sJ/2TDWODcCgiX62ZFFUD15axWh2D6X+Ga5+bFokwN7/HCdwXMpUL2dNcj5Kit5FVwt1+YYW5MaZPZwbMVrl0OrSaHH0sH2dMY4H3TP3F/JQceKdhMYs0stG7oYLez7MQkmOk7zwpw3uZOBB+ey6wlIMwMB/Lw6UR3lrijSzLXrIOc+UpZZ3ptD1mN4evQZk6gl/knmkrv7/prC8M14Rt4up2TlrGjULw70ZdfNzSBJyGVLfIRpdEr44UmVyg1noxTcY/RSrIO+Om7+XAC3d+/+RG4wIDAQAB\",
+          \"name\": \"Catppuccin Chrome Theme - Frappe\",
+          \"version\": \"0.0\",
+          \"manifest_version\": 3,
+          \"update_url\": \"https://clients2.google.com/service/update2/crx\"
+        },
+        \"path\": \"olhelnoplefjdmncknfphenjclimckaf\\\\0.0\",
+        \"state\": 1
+      }
+    }
+  }
+}
+EOF"
+
+  if [[ $? -eq 0 ]]; then
+    log " • Brave initial_preferences written to $PREF_FILE"
+  else
+    warn "Failed to write Brave initial_preferences."
+  fi
+}
+
 
 configure_vscode() {
   install_vscode_extensions
@@ -799,7 +837,6 @@ set_themes() {
   set_terminal_theme
   set_system_theme
   set_text_editor_theme
-  set_brave_theme
 }
 
 set_terminal_theme() {
@@ -1028,53 +1065,6 @@ set_text_editor_theme() {
     fi
   else
     warn "Xed gsettings schema not found; Catppuccin theme installed but not auto-activated."
-  fi
-}
-
-set_brave_theme() {
-  log "Installing Catppuccin Frappé Chrome Theme extension (managed)…"
-
-  local POLICY_DIR="/etc/opt/brave/policies/managed"
-  local POLICY_FILE="$POLICY_DIR/brave-policies.json"
-
-  local EXT_ID="olhelnoplefjdmncknfphenjclimckaf"
-  local UPDATE_URL="https://clients2.google.com/service/update2/crx"
-  local ENTRY="${EXT_ID};${UPDATE_URL}"
-
-  sudo mkdir -p "$POLICY_DIR"
-
-  # Use Python to merge/append ExtensionInstallForcelist safely
-  sudo python3 - <<PY
-import json, os
-
-policy_path = r"$POLICY_FILE"
-entry = r"$ENTRY"
-
-data = {}
-if os.path.exists(policy_path):
-    try:
-        with open(policy_path, "r", encoding="utf-8") as f:
-            content = f.read().strip() or "{}"
-            data = json.loads(content)
-    except Exception:
-        data = {}
-
-if not isinstance(data, dict):
-    data = {}
-
-lst = data.setdefault("ExtensionInstallForcelist", [])
-if entry not in lst:
-    lst.append(entry)
-
-with open(policy_path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2, sort_keys=True)
-PY
-
-  if [[ $? -eq 0 ]]; then
-    log " • Catppuccin Frappé theme extension added to Brave's managed forcelist."
-    log "   It will auto-install when Brave next starts."
-  else
-    warn "Failed to update Brave managed policies for Catppuccin theme."
   fi
 }
 
