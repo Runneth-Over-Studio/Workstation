@@ -511,7 +511,7 @@ PY
   fi
 }
 
-configure_brave_theme() {
+cconfigure_brave_theme() {
   log "Configuring Brave browser theme…"
 
   local BRAVE_DIR="$HOME/.config/BraveSoftware/Brave-Browser/Default"
@@ -527,11 +527,11 @@ configure_brave_theme() {
   fi
 
   python3 - "$PREF" <<'PY'
-import json, sys, os
+import json, sys
 
 path = sys.argv[1]
 
-# Load existing preferences (or {} if it's empty/invalid)
+# Load existing preferences (or {} if empty/invalid)
 try:
     with open(path, "r", encoding="utf-8") as f:
         content = f.read().strip() or "{}"
@@ -545,13 +545,11 @@ if not isinstance(data, dict):
 browser = data.setdefault("browser", {})
 theme = browser.setdefault("theme", {})
 
-# Values observed from your manual config:
-#   "color_scheme": 2  -> Dark
-#   "color_variant": 1 -> Blue
+# Dark + Blue, matching manual settings
+# 2 = Dark, 1 = Blue, user_color is the ARGB value Brave wrote for Blue.
 theme["color_scheme"] = 2
 theme["color_variant"] = 1
-
-# Preserve user_color if it exists; don't touch it otherwise
+theme["user_color"] = -7558172
 
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, sort_keys=True)
