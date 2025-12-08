@@ -434,8 +434,7 @@ configure_bleachbit() {
 
 configure_browser() {
   set_brave_default_browser
-  pin_brave_to_panel_cinnamon
-  #configure_brave_theme
+  pin_brave_to_panel
   configure_brave_preferences
 }
 
@@ -453,7 +452,7 @@ set_brave_default_browser() {
   fi
 }
 
-pin_brave_to_panel_cinnamon() {
+pin_brave_to_panel() {
   log "Configuring grouped-window-list pinned apps to include Brave…"
 
   local CFG_FILE="$HOME/.config/cinnamon/spices/grouped-window-list@cinnamon.org/2.json"
