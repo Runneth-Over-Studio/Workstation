@@ -512,48 +512,6 @@ PY
   fi
 }
 
-configure_brave_theme() {
-  log "Configuring Brave browser theme…"
-
-  local BRAVE_DIR="$HOME/.config/BraveSoftware/Brave-Browser/Default"
-  local PREF="$BRAVE_DIR/Preferences"
-
-  # Ensure the profile directory exists
-  mkdir -p "$BRAVE_DIR"
-
-  # If Preferences doesn't exist yet, create a minimal JSON structure
-  if [[ ! -f "$PREF" ]]; then
-    log " • Brave Preferences not found; creating a new one."
-    echo '{}' > "$PREF"
-  fi
-
-  python3 - "$PREF" <<'PY'
-import json, sys
-
-path = sys.argv[1]
-
-# Load existing preferences (or {} if empty/invalid)
-try:
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read().strip() or "{}"
-        data = json.loads(content)
-except Exception:
-    data = {}
-
-if not isinstance(data, dict):
-    data = {}
-
-browser = data.setdefault("browser", {})
-theme = browser.setdefault("theme", {})
-
-# 2 = Dark
-theme["color_scheme"] = 2
-
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2, sort_keys=True)
-PY
-}
-
 configure_brave_preferences() {
   log "Writing Brave initial_preferences…"
 
@@ -569,7 +527,7 @@ configure_brave_preferences() {
         \"location\": 1,
         \"manifest\": {
           \"key\": \"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiNFnIjbGyRxkBL9VQA71r9NP+37GYIVXMDX3CAFRSehP4+Fne1HVfcgRZP5sJ/2TDWODcCgiX62ZFFUD15axWh2D6X+Ga5+bFokwN7/HCdwXMpUL2dNcj5Kit5FVwt1+YYW5MaZPZwbMVrl0OrSaHH0sH2dMY4H3TP3F/JQceKdhMYs0stG7oYLez7MQkmOk7zwpw3uZOBB+ey6wlIMwMB/Lw6UR3lrijSzLXrIOc+UpZZ3ptD1mN4evQZk6gl/knmkrv7/prC8M14Rt4up2TlrGjULw70ZdfNzSBJyGVLfIRpdEr44UmVyg1noxTcY/RSrIO+Om7+XAC3d+/+RG4wIDAQAB\",
-          \"name\": \"Catppuccin Chrome Theme - Frappe Blue\",
+          \"name\": \"Catppuccin Chrome Theme - Frappe\",
           \"version\": \"0.0\",
           \"manifest_version\": 3,
           \"update_url\": \"https://clients2.google.com/service/update2/crx\"
