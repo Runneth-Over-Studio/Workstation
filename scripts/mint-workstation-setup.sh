@@ -283,7 +283,44 @@ install_apps() {
   install_flatpaks
 }
 
+install_fonts() {
+  log "Installing document compatibility fonts…"
+
+  install_microsoft_core_fonts
+  install_google_replacement_fonts
+
+  log "Refreshing font cache…"
+  sudo fc-cache -fv >/dev/null
+}
+
+install_microsoft_core_fonts() {
+  log "Installing Microsoft core fonts (msttcorefonts)…"
+
+  mkdir -p "$HOME/Downloads"
+  local deb="$HOME/Downloads/ttf-mscorefonts-installer_3.8.1_all.deb"
+
+  if [[ ! -f "$deb" ]]; then
+    wget -O "$deb" \
+      https://ftp.us.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.8.1_all.deb
+  fi
+
+  sudo apt-get install --no-install-recommends -y "$deb"
+
+  sudo mkdir -p /usr/local/share/fonts/truetype/msttcorefonts2
+  sudo cp -r /usr/share/fonts/truetype/msttcorefonts/* \
+    /usr/local/share/fonts/truetype/msttcorefonts2/
+
+  sudo apt-get purge -y ttf-mscorefonts-installer || true
+}
+
+install_google_replacement_fonts() {
+  log "Installing Carlito and Caladea (Calibri/Cambria replacements)…"
+  sudo apt-get install -y fonts-crosextra-carlito fonts-crosextra-caladea
+}
+
 libreoffice_flatpak() {
+  install_fonts
+
   log "Installing LibreOffice from Flathub (removing distro)..."
 
   sudo apt-get remove -y --purge libreoffice* libreoffice-core* || true
