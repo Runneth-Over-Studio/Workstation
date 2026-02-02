@@ -797,6 +797,7 @@ set_themes() {
   set_terminal_theme
   set_system_theme
   set_text_editor_theme
+  set_dark_mode_preference
 }
 
 set_terminal_theme() {
@@ -1025,6 +1026,39 @@ set_text_editor_theme() {
     fi
   else
     warn "Xed gsettings schema not found; Catppuccin theme installed but not auto-activated."
+  fi
+}
+
+set_dark_mode_preference() {
+  log "Setting Dark Mode preference to 'Prefer dark mode'…"
+
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; cannot set Dark Mode preference."
+    return 0
+  fi
+
+  local did_set="no"
+
+  if gsettings list-schemas | grep -qx 'org.cinnamon.desktop.interface'; then
+    if gsettings list-keys org.cinnamon.desktop.interface 2>/dev/null | grep -qx 'color-scheme'; then
+      if gsettings set org.cinnamon.desktop.interface color-scheme 'prefer-dark' 2>/dev/null; then
+        did_set="yes"
+        log " • Dark Mode set via org.cinnamon.desktop.interface color-scheme = prefer-dark."
+      fi
+    fi
+  fi
+
+  if [[ "$did_set" != "yes" ]] && gsettings list-schemas | grep -qx 'org.gnome.desktop.interface'; then
+    if gsettings list-keys org.gnome.desktop.interface 2>/dev/null | grep -qx 'color-scheme'; then
+      if gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null; then
+        did_set="yes"
+        log " • Dark Mode set via org.gnome.desktop.interface color-scheme = prefer-dark."
+      fi
+    fi
+  fi
+
+  if [[ "$did_set" != "yes" ]]; then
+    warn "Could not find a supported 'color-scheme' key; leaving Dark Mode as-is."
   fi
 }
 
