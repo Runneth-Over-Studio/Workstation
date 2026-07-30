@@ -36,12 +36,11 @@ export DEBIAN_FRONTEND=noninteractive
 # =============================================================================
 #    Linux Mint Workstation Setup
 #
-#  - Args: --skip-vulkan | --gpu=auto|nvidia|amd|intel|none | --help
+#  - Args: --skip-vulkan | --help
 #
 #  1) System Updates
-#  2) GPU Driver Helper (auto/NVIDIA/AMD/Intel)
-#  3) SDKs (.NET/Vulkan)
-#  4) App Installs
+#  2) SDKs (.NET/Vulkan)
+#  3) App Installs
 #     • LibreOffice - Office Suite
 #     • Brave - Web Browser
 #     • git - Version Control
@@ -56,8 +55,8 @@ export DEBIAN_FRONTEND=noninteractive
 #     • Kdenlive - Video Editing
 #     • OBS - Screen Recording
 #     • Flameshot - Screenshot Utility
-#  5) App Configurations
-#  6) "Rice" - Themes & Aesthetics
+#  4) App Configurations
+#  5) "Rice" - Themes & Aesthetics
 # =============================================================================
 
 # ----- helpers ---------------------------------------------------------------
@@ -69,16 +68,10 @@ is_pkg_installed() { dpkg -s "$1" >/dev/null 2>&1; }
 
 usage() {
   cat <<EOF
-Usage: $0 [--skip-vulkan] [--gpu=auto|nvidia|amd|intel|none] [--help]
+Usage: $0 [--skip-vulkan] [--help]
 
 Options:
   --skip-vulkan           Skip installing Vulkan development packages
-  --gpu=MODE              Install/ensure GPU driver stack:
-                            auto   (default) detect GPU and choose
-                            nvidia proprietary via ubuntu-drivers
-                            amd    Mesa Vulkan stack
-                            intel  Mesa Vulkan stack
-                            none   do nothing
   --help                  Show this help
 EOF
 }
@@ -124,12 +117,10 @@ load_resource() {
 
 # ----- arg parsing -----------------------------------------------------------
 SKIP_VULKAN=false
-GPU_MODE="auto"
 
 for arg in "$@"; do
   case "$arg" in
     --skip-vulkan) SKIP_VULKAN=true ;;
-    --gpu=*)       GPU_MODE="${arg#*=}" ;;
     --help|-h)     usage; exit 0 ;;
     *)             warn "Unknown option: $arg"; usage; exit 1 ;;
   esac
@@ -166,61 +157,7 @@ final_updates() {
 }
 
 # =============================================================================
-#  2) GPU DRIVER HELPER
-#      - auto: detect vendor; NVIDIA => proprietary driver, AMD/Intel => Mesa
-#      - nvidia: force ubuntu-drivers autoinstall
-#      - amd/intel: ensure Mesa Vulkan stack
-#      - none: do nothing
-# =============================================================================
-install_gpu_drivers() {
-  local mode="$GPU_MODE"
-
-  if [[ "$mode" == "none" ]]; then
-    log "GPU driver helper skipped (--gpu=none)."
-    return 0
-  fi
-
-  # Auto-detect if requested
-  if [[ "$mode" == "auto" ]]; then
-    local pci
-    pci="$(LC_ALL=C lspci -nnk | grep -iE 'VGA|3D|Display' || true)"
-    if echo "$pci" | grep -qi nvidia; then
-      mode="nvidia"
-    elif echo "$pci" | grep -qi amd\|ati; then
-      mode="amd"
-    elif echo "$pci" | grep -qi intel; then
-      mode="intel"
-    else
-      warn "Could not determine GPU vendor; defaulting to Mesa stack."
-      mode="amd"
-    fi
-    log "Auto-detected GPU mode: $mode"
-  fi
-
-  case "$mode" in
-    nvidia)
-      log "Installing NVIDIA proprietary driver via ubuntu-drivers..."
-      sudo apt-get install -y ubuntu-drivers-common
-      sudo ubuntu-drivers autoinstall || warn "ubuntu-drivers autoinstall did not complete successfully."
-      log "NVIDIA driver install attempted. A reboot is usually required."
-      # drop a hint file the user can check later
-      touch "$HOME/.reboot-recommended-nvidia" || true
-      ;;
-    amd|intel)
-      log "Ensuring Mesa Vulkan stack (works for AMD & Intel)..."
-      sudo apt-get install -y mesa-vulkan-drivers || true
-      # Helpful VA-API codec drivers (best-effort; may vary by base release)
-      sudo apt-get install -y intel-media-va-driver-non-free || true
-      log "Mesa Vulkan stack ensured."
-      ;;
-    *)
-      warn "Unknown GPU mode '$mode'; skipping GPU driver helper."
-      ;;
-  esac
-}
-
-# =============================================================================
-#  3) SDKs
+#  2) SDKs
 # =============================================================================
 install_sdks() {
   install_dotnet_sdk
@@ -254,23 +191,29 @@ install_vulkan_sdk() {
 
   log "Installing Vulkan SDK (via distro packages)..."
 
-  sudo apt-get install -y     libvulkan1 vulkan-tools     libvulkan-dev vulkan-validationlayers     glslang-tools spirv-tools glslc libshaderc-dev     mesa-vulkan-drivers
+  sudo apt-get install -y     libvulkan1 vulkan-tools     libvulkan-dev vulkan-validationlayers     glslang-tools spirv-tools glslc libshaderc-dev
 
   # Optional X/Wayland dev headers, helpful for building sample apps with windows
   sudo apt-get install -y     libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev     libwayland-dev wayland-protocols libxkbcommon-dev || true
 
   if command -v vulkaninfo >/dev/null 2>&1; then
-    log "vulkaninfo (first lines):"
-    vulkaninfo | head -n 10 || true
+    if vulkaninfo >/dev/null 2>&1; then
+      log "Vulkan runtime detected successfully."
+      log "vulkaninfo (first lines):"
+      vulkaninfo | head -n 10 || true
+    else
+      warn "Vulkan tools are installed, but the Vulkan runtime could not be initialized."
+      warn "If you are using an NVIDIA GPU, open Linux Mint's Driver Manager and install the recommended proprietary driver."
+    fi
   else
-    warn "vulkaninfo not found; ensure 'vulkan-tools' installed and drivers support Vulkan."
+    warn "vulkaninfo not found; ensure 'vulkan-tools' installed correctly."
   fi
 
   log "Vulkan (APT packages) install done."
 }
 
 # =============================================================================
-#  4) APP INSTALLS
+#  3) APP INSTALLS
 # =============================================================================
 install_apps() {
   libreoffice_flatpak
@@ -429,7 +372,7 @@ install_brave_browser() {
 }
 
 # =============================================================================
-#  5) APP CONFIGURATIONS
+#  4) APP CONFIGURATIONS
 # =============================================================================
 configure_apps() {
   configure_libreoffice
@@ -728,7 +671,7 @@ PY
 }
 
 # =============================================================================
-#  6) "RICE" – THEMES & AESTHETICS
+#  5) "RICE" – THEMES & AESTHETICS
 # =============================================================================
 cook_rice() {
   set_wallpaper
@@ -1466,19 +1409,16 @@ main() {
   log "==== 1) SYSTEM UPDATE ===="
   system_update
 
-  log "==== 2) GPU DRIVER HELPER (mode: $GPU_MODE) ===="
-  install_gpu_drivers
-
-  log "==== 3) SDKs ===="
+  log "==== 2) SDKs ===="
   install_sdks
 
-  log "==== 4) APP INSTALLS ===="
+  log "==== 3) APP INSTALLS ===="
   install_apps
 
-  log "==== 5) APP CONFIGURATIONS ===="
+  log "==== 4) APP CONFIGURATIONS ===="
   configure_apps
 
-  log "==== 6) RICE (THEMES & AESTHETICS) ===="
+  log "==== 5) RICE (THEMES & AESTHETICS) ===="
   if ! cook_rice; then
     warn "Rice step encountered an error; continuing to final updates."
   fi
