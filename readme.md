@@ -43,7 +43,7 @@ Performs system updates, turns on Mint's automatic updates, and installs & confi
 
 - **git** - Version Control (creates `~/source`)
 - **.NET SDK** - Latest SDK available from APT
-- **MonoGame** - Project templates (`dotnet new mgdesktopgl`, etc.), plus the .NET runtime they target if the SDK alone can't run it
+- **MonoGame** - Project templates (`dotnet new mgdesktopgl`, etc.)
 - **VS Code** - Code Editor, with extensions, settings, and keybindings
 - **Blender** - 3D Modeling & Rendering
 

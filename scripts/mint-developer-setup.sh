@@ -109,31 +109,6 @@ install_monogame_templates() {
   else
     dotnet new install MonoGame.Templates.CSharp
   fi
-
-  # The templates target a specific .NET version, which may be older than the SDK
-  # installed above. The SDK can build for it, but running needs that runtime too.
-  local tmp ver
-  tmp="$(mktemp -d)"
-  dotnet new mgdesktopgl -n probe -o "$tmp/probe" >/dev/null
-  ver="$(grep -oE '<TargetFramework>net[0-9]+\.[0-9]+' "$tmp/probe/probe.csproj" | sed 's/.*>net//')"
-  rm -rf "$tmp"
-
-  if [[ -z "$ver" ]]; then
-    warn "Couldn't tell which .NET version the MonoGame templates target; check 'dotnet --list-runtimes'."
-    return 0
-  fi
-  if grep -q "^Microsoft.NETCore.App $ver\." <<<"$(dotnet --list-runtimes)"; then
-    info "MonoGame templates target .NET $ver; its runtime is installed."
-    return 0
-  fi
-
-  if ! apt_has_candidate "dotnet-runtime-$ver"; then
-    info "dotnet-runtime-$ver isn't in the distro archive; adding the Ubuntu .NET backports PPA…"
-    sudo add-apt-repository -y ppa:dotnet/backports
-    "${APT_GET[@]}" update
-  fi
-  apt_install "dotnet-runtime-$ver"
-  info "Installed the .NET $ver runtime that MonoGame projects target."
 }
 
 install_vscode() {
