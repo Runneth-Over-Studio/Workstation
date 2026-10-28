@@ -1,0 +1,4 @@
+# Flathub apps installed by mint-developer-setup.sh, one app ID per line.
+# Flatpaks update through Mint's Update Manager.
+
+org.blender.Blender

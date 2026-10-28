@@ -1,0 +1,5 @@
+# Everything here runs on Linux: keep text files LF even in Windows checkouts.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary

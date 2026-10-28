@@ -1,0 +1,11 @@
+# Flathub apps installed by mint-general-setup.sh, one app ID per line.
+# Flatpaks update through Mint's Update Manager.
+
+org.libreoffice.LibreOffice
+com.bitwarden.desktop
+org.flameshot.Flameshot
+org.freecad.FreeCAD
+org.inkscape.Inkscape
+org.kde.krita
+org.kde.kdenlive
+com.obsproject.Studio
