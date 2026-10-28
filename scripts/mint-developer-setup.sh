@@ -8,7 +8,7 @@
 #  1) System update, prerequisites, automatic updates
 #  2) Developer tools
 #     • git - Version Control
-#     • .NET SDK (latest from APT) + MonoGame project templates
+#     • .NET SDK (latest LTS from APT) + MonoGame project templates
 #     • VS Code - Code Editor (+ extensions, settings, keybindings)
 #     • Blender - 3D Modeling & Rendering
 #  3) Desktop integration
@@ -65,8 +65,10 @@ install_git() {
   mkdir -p "$HOME/source"
 }
 
-latest_dotnet_sdk_pkg() {
-  apt-cache pkgnames dotnet-sdk- | grep -E '^dotnet-sdk-[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true
+# Newest LTS SDK package available. .NET LTS releases have even major versions
+# (8, 10, 12, …); moving to an odd-numbered (STS) release should be a deliberate change here.
+latest_lts_dotnet_sdk_pkg() {
+  apt-cache pkgnames dotnet-sdk- | grep -E '^dotnet-sdk-[0-9]*[02468]\.0$' | sort -V | tail -n1 || true
 }
 
 install_dotnet_sdk() {
@@ -80,20 +82,29 @@ install_dotnet_sdk() {
   fi
 
   local pkg
-  pkg="$(latest_dotnet_sdk_pkg)"
+  pkg="$(latest_lts_dotnet_sdk_pkg)"
   if [[ -z "$pkg" ]]; then
-    info "No .NET SDK in the distro archive; adding the Ubuntu .NET backports PPA…"
+    info "No .NET LTS SDK in the distro archive; adding the Ubuntu .NET backports PPA…"
     sudo add-apt-repository -y ppa:dotnet/backports
     "${APT_GET[@]}" update
-    pkg="$(latest_dotnet_sdk_pkg)"
+    pkg="$(latest_lts_dotnet_sdk_pkg)"
   fi
   if [[ -z "$pkg" ]]; then
-    error "No dotnet-sdk package available from APT."
+    error "No .NET LTS SDK package available from APT."
     return 1
   fi
 
   apt_install "$pkg"
   info "Installed $pkg ($(dotnet --version)); it updates through APT."
+
+  # Keep only the latest LTS: remove any other SDK versions (older LTS or STS).
+  local others=()
+  mapfile -t others < <(dpkg-query -W -f='${Package} ${Status}\n' 'dotnet-sdk-*' 2>/dev/null \
+    | awk -v keep="$pkg" '/install ok installed/ && $1 != keep && $1 ~ /^dotnet-sdk-[0-9]+\.[0-9]+$/ {print $1}')
+  if (( ${#others[@]} )); then
+    info "Removing other .NET SDKs: ${others[*]}"
+    "${APT_GET[@]}" purge "${others[@]}"
+  fi
 }
 
 install_monogame_templates() {

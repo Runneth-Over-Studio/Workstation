@@ -42,7 +42,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Runneth-Over-Studio/Workstat
 Performs system updates, turns on Mint's automatic updates, and installs & configures:
 
 - **git** - Version Control (creates `~/source`)
-- **.NET SDK** - Latest SDK available from APT
+- **.NET SDK** - Latest LTS SDK from APT (only that one; older and odd-numbered SDKs are removed)
 - **MonoGame** - Project templates (`dotnet new mgdesktopgl`, etc.)
 - **VS Code** - Code Editor, with extensions, settings, and keybindings
 - **Blender** - 3D Modeling & Rendering
