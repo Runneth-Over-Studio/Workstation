@@ -1,8 +1,8 @@
 [
   {
     "key": "ctrl+alt+o",
-    "command": "csharp-organize-usings.organize",
-    "when": "editorTextFocus && editorLangId == csharp"
+    "command": "editor.action.organizeImports",
+    "when": "editorTextFocus && !editorReadonly && editorLangId == csharp"
   },
   {
     "key": "ctrl+shift+i",

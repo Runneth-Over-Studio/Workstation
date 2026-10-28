@@ -1,0 +1,20 @@
+name: Lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: ShellCheck
+        run: shellcheck -x scripts/*.sh scripts/lib/*.sh
+
+      - name: Python syntax
+        run: python3 -m py_compile scripts/lib/helpers.py
+
+      - name: JSON resources
+        run: for f in scripts/resources/*.json; do jq empty "$f"; done

@@ -1,0 +1,16 @@
+# VS Code extensions installed by mint-developer-setup.sh, one ID per line.
+# Removing a line here doesn't uninstall it; add it to RETIRED_VSCODE_EXTENSIONS for that.
+
+# .NET / C#
+ms-dotnettools.csharp
+ms-dotnettools.csdevkit
+JosKreativ.vscode-csharp-extensions
+AvaloniaTeam.vscode-avalonia
+
+# Web
+dbaeumer.vscode-eslint
+ecmel.vscode-html-css
+christian-kohler.path-intellisense
+
+# Look & feel
+PKief.material-icon-theme
