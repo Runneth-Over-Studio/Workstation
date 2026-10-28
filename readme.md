@@ -24,7 +24,7 @@ Performs system updates, turns on Mint's automatic updates, installs document-co
 - **Brave** - Web Browser (replaces Firefox and becomes the default browser)
 - **LibreOffice** - Office Suite (Flatpak, replaces the distro build; tabbed UI)
 - **Joplin** - Note-Taking
-- **MarkText** - Markdown Editor (default app for `.md` files)
+- **MDHero** - Markdown Editor (default app for `.md` files)
 - **BleachBit** - System Cleaner
 - **Bitwarden** - Password Vault
 - **Flameshot** - Screenshot Utility
@@ -77,8 +77,9 @@ Things are installed from official channels so they keep themselves updated with
 | --- | --- | --- |
 | Mint / Ubuntu APT archive | System, fonts, git, .NET SDK, BleachBit, Papirus | Mint Update Manager (automatic updates turned on) |
 | Vendor APT repos | Brave, VS Code | Mint Update Manager |
-| Flathub | LibreOffice, MarkText, Bitwarden, Flameshot, FreeCAD, Inkscape, Krita, Kdenlive, OBS, Blender | Mint Update Manager |
+| Flathub | LibreOffice, Bitwarden, Flameshot, FreeCAD, Inkscape, Krita, Kdenlive, OBS, Blender | Mint Update Manager |
 | NuGet | MonoGame templates | Re-run the script |
+| GitHub release `.deb` | MDHero | Re-run the script |
 | Vendor installer | Joplin | Re-run the script (or Joplin's own update prompt) |
 
 Re-running either script is safe. Installed software is skipped or updated. Settings files that are merged (VS Code) or replaced (BleachBit) get a timestamped `.bak` copy when they change. Each run writes a log to `~/mint-general-setup.log` or `~/mint-developer-setup.log`. If any step fails, the script carries on, lists the failed steps at the end, and exits non-zero.

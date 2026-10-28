@@ -2,7 +2,6 @@
 # Flatpaks update through Mint's Update Manager.
 
 org.libreoffice.LibreOffice
-com.github.marktext.marktext
 com.bitwarden.desktop
 org.flameshot.Flameshot
 org.freecad.FreeCAD

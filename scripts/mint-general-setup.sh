@@ -10,7 +10,7 @@
 #     • Brave - Web Browser (replaces Firefox)
 #     • LibreOffice - Office Suite (Flatpak, replaces distro build)
 #     • Joplin - Note-Taking
-#     • MarkText - Markdown Editor (default for .md)
+#     • MDHero - Markdown Editor (default for .md)
 #     • BleachBit - System Cleaner
 #     • Bitwarden - Password Vault
 #     • Flameshot - Screenshot Utility
@@ -64,7 +64,7 @@ NEOFETCH_URL="https://raw.githubusercontent.com/dylanaraps/neofetch/7.1.0/neofet
 
 GTK_THEME_NAME="catppuccin-frappe-blue-standard+default"
 JOPLIN_DESKTOP="appimagekit-joplin.desktop"
-MARKTEXT_DESKTOP="com.github.marktext.marktext.desktop"
+MDHERO_DESKTOP="MDHero.desktop"
 LIBREOFFICE_USER_DIR="$HOME/.var/app/org.libreoffice.LibreOffice/config/libreoffice/4/user"
 
 # =============================================================================
@@ -135,6 +135,23 @@ install_joplin() {
   curl -fsSL https://raw.githubusercontent.com/laurent22/joplin/dev/Joplin_install_and_update.sh | bash
 }
 
+install_mdhero() {
+  # Official .deb from the project's GitHub releases (no APT repo); re-running installs the latest release.
+  local arch url tmp
+  arch="$(dpkg --print-architecture)"
+  url="$(curl -fsSL https://api.github.com/repos/vaibhav-kakde-in/mdhero/releases/latest \
+    | grep -oE "\"browser_download_url\": *\"[^\"]*_${arch}\.deb\"" | head -n1 | cut -d'"' -f4)"
+  if [[ -z "$url" ]]; then
+    error "No MDHero .deb found for $arch."
+    return 1
+  fi
+  tmp="$(mktemp -d)"
+  curl -fsSL "$url" -o "$tmp/mdhero.deb"
+  apt_install "$tmp/mdhero.deb"
+  rm -rf "$tmp"
+  is_pkg_installed md-hero
+}
+
 install_bleachbit() {
   apt_install bleachbit
 
@@ -185,13 +202,13 @@ configure_libreoffice() {
   rm -f "$HOME/.configure-libreoffice-ui.sh"
 }
 
-configure_marktext() {
-  if ! flatpak info com.github.marktext.marktext >/dev/null 2>&1; then
-    warn "MarkText isn't installed; leaving Markdown file associations alone."
+configure_mdhero() {
+  if ! is_pkg_installed md-hero; then
+    warn "MDHero isn't installed; leaving Markdown file associations alone."
     return 0
   fi
-  xdg-mime default "$MARKTEXT_DESKTOP" text/markdown text/x-markdown
-  info "MarkText is the default app for Markdown files."
+  xdg-mime default "$MDHERO_DESKTOP" text/markdown text/x-markdown
+  info "MDHero is the default app for Markdown files."
 }
 
 configure_favorites() {
@@ -376,12 +393,13 @@ main() {
   run_step "Installing Flatpak apps" install_flatpaks flatpaks-general.txt
   run_step "Removing distro LibreOffice" remove_distro_libreoffice
   run_step "Installing Joplin" install_joplin
+  run_step "Installing MDHero" install_mdhero
   run_step "Installing BleachBit" install_bleachbit
 
   log "==== 4) APP CONFIGURATIONS ===="
   run_step "Configuring Brave" configure_brave
   run_step "Configuring LibreOffice" configure_libreoffice
-  run_step "Configuring MarkText" configure_marktext
+  run_step "Configuring MDHero" configure_mdhero
   run_step "Configuring menu favorites" configure_favorites
 
   log "==== 5) RICE (THEMES & AESTHETICS) ===="
